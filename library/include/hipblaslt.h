@@ -48,6 +48,8 @@
 #include "hipblaslt-version.h"
 #include <hipblas.h>
 
+#include <vector>
+
 #include <hip/hip_bfloat16.h>
 #include <hip/hip_complex.h>
 #include <hip/hip_runtime.h>
@@ -163,6 +165,15 @@ typedef hipblasLtMatrixLayoutOpaque_t* hipblasLtMatrixLayout_t;
  *  \ref hipblasLtMatmulPreferenceDestroy(): To destroy a previously created descriptor and release the resources.
  */
 typedef hipblasLtMatmulPreferenceOpaque_t* hipblasLtMatmulPreference_t;
+
+typedef struct {
+  std::shared_ptr<void> groupedGemmPtr = nullptr;
+  std::shared_ptr<void> inputPtr = nullptr;
+  std::shared_ptr<void> kernelsPtr = nullptr;
+  size_t gemm_count = 0;
+  size_t workspace_bytes = 0;
+} hipblasLtGroupedGemmOpaque_t;
+typedef hipblasLtGroupedGemmOpaque_t* hipblasLtGroupedGemm_t;
 
 /*! \ingroup types_module
  *  \brief Description of the matrix multiplication algorithm
@@ -622,6 +633,15 @@ hipblasStatus_t
                                     hipblasLtMatmulHeuristicResult_t heuristicResultsArray[],
                                     int*                             returnAlgoCount);
 
+HIPBLASLT_EXPORT
+hipblasStatus_t
+    hipblasLtGroupedGemmAlgoGetHeuristic(hipblasLtGroupedGemm_t      groupedgemm,
+                                    hipblasLtHandle_t                handle,
+                                    hipblasLtMatmulPreference_t      pref,
+                                    int                              requestedAlgoCount,
+                                    hipblasLtMatmulHeuristicResult_t heuristicResultsArray[],
+                                    int*                             returnAlgoCount);
+
 /*! \ingroup library_module
  *  \brief Retrieve the possible algorithms
  *
@@ -699,6 +719,33 @@ hipblasStatus_t hipblasLtMatmul(hipblasLtHandle_t            handle,
                                 void*                        workspace,
                                 size_t                       workspaceSizeInBytes,
                                 hipStream_t                  stream);
+
+HIPBLASLT_EXPORT
+hipblasStatus_t hipblasLtGroupedGemmCreate(hipblasLtGroupedGemm_t*    groupedgemm,
+                                std::vector<hipblasLtMatmulDesc_t>&   matmul_descr,
+                                std::vector<float>&                   alpha,
+                                std::vector<void*>&                   A,
+                                std::vector<hipblasLtMatrixLayout_t>& matA,
+                                std::vector<void*>&                   B,
+                                std::vector<hipblasLtMatrixLayout_t>& matB,
+                                std::vector<float>&                   beta,
+                                std::vector<void*>&                   C,
+                                std::vector<hipblasLtMatrixLayout_t>& matC,
+                                std::vector<void*>&                   D,
+                                std::vector<hipblasLtMatrixLayout_t>& matD,
+                                void*                                 workspace,
+                                size_t                                workspaceSizeInBytes);
+
+HIPBLASLT_EXPORT
+hipblasStatus_t hipblasLtGroupedGemmDestroy(hipblasLtGroupedGemm_t groupedgemm);
+
+HIPBLASLT_EXPORT
+hipblasStatus_t hipblasLtGroupedGemmInitialize(hipblasLtGroupedGemm_t       groupedgemm,
+                                               const hipblasLtMatmulAlgo_t* algo);
+
+HIPBLASLT_EXPORT
+hipblasStatus_t hipblasLtGroupedGemmRun(hipblasLtGroupedGemm_t groupedgemm,
+                                        hipStream_t            stream);
 
 #ifdef __cplusplus
 }

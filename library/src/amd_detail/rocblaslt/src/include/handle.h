@@ -171,4 +171,23 @@ struct _rocblaslt_matmul_preference
     int64_t search_iterations = 0;
 };
 
+/********************************************************************************
+ * \brief rocblaslt_groupedgemm holds the description of the grouped gemm
+ * It is initialized and destroyed with rocblaslt_groupedgemm_create()
+ * and rocblaslt_groupedgemm_destroy() functions respectively.
+ *******************************************************************************/
+struct _rocblaslt_groupedgemm
+{
+    // constructor
+    _rocblaslt_groupedgemm(){};
+    // destructor
+    ~_rocblaslt_groupedgemm(){};
+    //
+    std::shared_ptr<void> groupedGemmPtr = nullptr;
+    std::shared_ptr<void> inputPtr = nullptr;
+    std::shared_ptr<void> kernelsPtr = nullptr;
+    size_t gemm_count = 0;
+    size_t workspace_bytes = 0;
+};
+
 #endif // HANDLE_H
