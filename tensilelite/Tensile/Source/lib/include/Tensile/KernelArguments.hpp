@@ -232,11 +232,11 @@ namespace Tensile
 
     inline void KernelArguments::appendRecord(std::string const& name, KernelArguments::Arg record)
     {
-        auto it = m_argRecords.find(name);
-        if(it != m_argRecords.end())
-        {
-            throw std::runtime_error("Duplicate argument name: " + name);
-        }
+        // auto it = m_argRecords.find(name);
+        // if(it != m_argRecords.end())
+        // {
+        //     throw std::runtime_error("Duplicate argument name: " + name);
+        // }
 
         m_argRecords[name] = record;
         m_names.push_back(name);

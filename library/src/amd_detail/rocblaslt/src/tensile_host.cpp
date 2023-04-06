@@ -922,6 +922,7 @@ rocblaslt_status initializeGroupedGemm(rocblaslt_groupedgemm        groupedgemm,
     }
     catch(const std::exception& e)
     {
+        std::cout << e.what() << '\n';
 #if 0
         std::ostream msg;
         print_once(msg << "\nrocblaslt error: " << (solution ? "" : "No ")
@@ -930,6 +931,7 @@ rocblaslt_status initializeGroupedGemm(rocblaslt_groupedgemm        groupedgemm,
     }
     catch(...)
     {
+        std::cout << "Unknown exception thrown\n";
 #if 0
         std::ostream msg;
         print_once(msg << "\nrocblaslt error: " << (solution ? "" : "No ")

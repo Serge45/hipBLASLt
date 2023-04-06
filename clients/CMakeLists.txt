@@ -21,7 +21,7 @@
 #
 # ########################################################################
 
-cmake_minimum_required( VERSION 3.16.8 )
+cmake_minimum_required( VERSION 3.16 )
 
 #add_definitions(-D_HIPBLASLT_INTERNAL_BFLOAT16_)
 
