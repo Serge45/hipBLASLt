@@ -81,6 +81,8 @@ std::bitset<NumCUs> generateSEPackedBitsets(std::size_t numCUs, std::size_t &cur
     std::bitset<NumCUs> bits;
 
     for (std::size_t i = 0; i < numCUs; ++i) {
+        std::size_t realUsage{};
+
         if (curSEUsage < NumCUsPerSE) {
             const auto bitIdx = curSEUsage * NumSEs + curSEIdx;
 
@@ -89,12 +91,14 @@ std::bitset<NumCUs> generateSEPackedBitsets(std::size_t numCUs, std::size_t &cur
                 ++curSEUsage;
             } else {
                 //reset since CUs on current SE are all used.
+                realUsage = curSEUsage;
                 curSEUsage = NumCUsPerSE;
                 --i;
             }
         }
 
         if (curSEUsage == NumCUsPerSE) {
+            std::cout << "SE" << curSEIdx << ":" << realUsage << '\n';
             ++curSEIdx;
             curSEUsage = 0;
         }
@@ -104,7 +108,7 @@ std::bitset<NumCUs> generateSEPackedBitsets(std::size_t numCUs, std::size_t &cur
     return bits;
 }
 
-template<std::size_t NumCUs, std::size_t NumSEs, std::size_t NumCUsPerSE = 14ull>
+template<std::size_t NumCUs, std::size_t NumSEs, std::size_t NumCUsPerSE = 16ull>
 std::vector<CUMask> generateCUMaskGroups(const std::vector<std::size_t> &groupSizes, bool packSE) {
     std::vector<std::bitset<NumCUs>> rawMasks;
 
@@ -167,7 +171,7 @@ std::vector<CUMask> generateCUMaskGroups(std::size_t numGroups) {
     return masks;
 }
 
-template<std::size_t NumCUs, std::size_t NumSEs, std::size_t NumCUsPerSE = 14ull>
+template<std::size_t NumCUs, std::size_t NumSEs, std::size_t NumCUsPerSE = 16ull>
 std::vector<CUMask> generateSEPackedCUMaskGroups(std::size_t numGroups) {
     static_assert(NumCUs <= NumSEs * NumCUsPerSE, "Invalid CU & SE setting");
     std::vector<std::bitset<NumCUs>> rawMasks;
@@ -180,10 +184,10 @@ std::vector<CUMask> generateSEPackedCUMaskGroups(std::size_t numGroups) {
         auto bits = generateSEPackedBitsets<NumCUs, NumSEs, NumCUsPerSE>(numCUsPerGroup, curSEIdx, curSEUsage);
         rawMasks.push_back(bits);
         //prevent fron SE overlapping
-        if (curSEUsage) {
-            curSEUsage = 0;
-            ++curSEIdx;
-        }
+        // if (curSEUsage) {
+        //     curSEUsage = 0;
+        //     ++curSEIdx;
+        // }
     }
 
     rawMasks.push_back(generateSEPackedBitsets<NumCUs, NumSEs, NumCUsPerSE>(numCUsLastGroup, curSEIdx, curSEUsage));
@@ -197,6 +201,23 @@ std::vector<CUMask> generateSEPackedCUMaskGroups(std::size_t numGroups) {
     });
 
     return masks;
+}
+
+template<typename T>
+std::vector<std::vector<T>> split(const std::vector<T> &vec, const std::vector<std::size_t> &chunks) {
+    std::size_t offset{};
+    std::vector<std::vector<T>> ret;
+
+    for (auto c : chunks) {
+        std::vector<T> chunk;
+        auto beg = std::next(begin(vec), offset);
+        auto end = std::next(begin(vec), offset + c);
+        std::copy(beg, end, std::back_inserter(chunk));
+        ret.push_back(chunk);
+        offset += c;
+    }
+
+    return ret;
 }
 
 template<typename T>

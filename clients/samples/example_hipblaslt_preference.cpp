@@ -70,7 +70,7 @@
 #define ALPHA 1
 #define BETA 0
 
-constexpr auto EXPECTED_NUM_CUS = 104u;
+constexpr auto EXPECTED_NUM_CUS = 110u;
 
 float profileGroupedGemm(hipStream_t stream,
     hipblasLtGroupedGemm_t ggemm,
@@ -92,19 +92,18 @@ float profileGroupedGemm(hipStream_t stream,
                 hipEventRecord(beg, stream);
             }
             CHECK_HIPBLASLT_ERROR(hipblasLtGroupedGemmRun(ggemm, stream));
-
             if (profile) {
                 hipEventRecord(end, stream);
             }
-
             hipEventSynchronize(end);
             hipStreamSynchronize(stream);
             hipDeviceSynchronize();
-
             if (profile) {
                 dur += SafeEventDurCalculator::calculate(beg, end);
             }
         }
+
+
     } catch (...) {
         std::cout << "Exception catched..., ignore this combination\n";
     }
@@ -132,33 +131,34 @@ std::size_t findBestGroupedAlgoIdx(hipStream_t stream,
 
         ++curIdx;
     }
-    std::cout << "Best time: " << std::to_string(timeMs) << " ms\n";
+    std::cout << "Best time: " << std::to_string(timeMs) << " ms, index: " << bestIdx << '\n';
 
     return bestIdx;
 }
 
 float profileGroupedGemms(hipStream_t *streams, hipblasLtGroupedGemm_t *ggemms, const hipblasLtMatmulHeuristicResult_t *algos, std::size_t numGemms, std::size_t numRuns) {
+
+    for (std::size_t j = 0; j < numGemms; ++j) {
+        CHECK_HIPBLASLT_ERROR(hipblasLtGroupedGemmInitialize(ggemms[j], &(algos[j].algo)));
+    }
+
+    SafeEvent beg, end;
     float dur{};
 
     for (std::size_t i = 0; i < numRuns; ++i) {
-        for (std::size_t j = 0; j < numGemms; ++j) {
-            CHECK_HIPBLASLT_ERROR(hipblasLtGroupedGemmInitialize(ggemms[j], &(algos[j].algo)));
+        for (std::size_t k = 0; k < numRuns; ++k) {
+            hipEventRecord(beg);
+            for (std::size_t j = 0; j < numGemms; ++j) {
+                CHECK_HIPBLASLT_ERROR(hipblasLtGroupedGemmRun(ggemms[j], streams[j]));
+            }
+            hipEventRecord(end);
+            hipEventSynchronize(end);
+            hipDeviceSynchronize();
+            dur += SafeEventDurCalculator::calculate(beg, end);
         }
-
-        SafeEvent beg, end;
-        hipEventRecord(beg);
-
-        for (std::size_t j = 0; j < numGemms; ++j) {
-            CHECK_HIPBLASLT_ERROR(hipblasLtGroupedGemmRun(ggemms[j], streams[j]));
-        }
-
-        hipEventRecord(end);
-        hipEventSynchronize(end);
-        hipDeviceSynchronize();
-        dur += SafeEventDurCalculator::calculate(beg, end);
     }
-
-    return dur / numRuns;
+    hipDeviceSynchronize();
+    return dur / (numRuns * numRuns);
 }
 
 void dfsFindBestGroupedGemmAlgoCombinations(std::vector<hipStream_t> &streams,
@@ -999,11 +999,17 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
     CHECK_HIPBLASLT_ERROR(hipblasLtMatmulPreferenceSetAttribute(
         pref, HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspace_size, sizeof(workspace_size)));
 
-    std::vector<hipStream_t> stream(num_streams, nullptr);
+    std::vector<hipStream_t> stream(num_streams);
 
-    if (cu_groups > 1) {
+    // CUMask cuMask{0xffffffff, 0xffffffff, 0xffffffff, 0x00003ff1};
+    for (auto &s : stream) {
+        hipStreamCreate(&s);
+        // hipExtStreamCreateWithCUMask(&s, cuMask.size(), cuMask.data());
+    }
+
+    if (cu_groups > 1 || cu_group_sizes.size()) {
         std::cout << "cu_groups == " << cu_groups << ", CU masked stream enabled\n";
-        num_streams = cu_groups;
+        // num_streams = cu_groups;
         stream.resize(cu_groups);
 
         if (pack_se) {
@@ -1012,10 +1018,17 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
             std::cout << "SE-distributed masks will be generated\n";
         }
 
-        std::vector<CUMask> masks;
-
+        // std::vector<CUMask> masks{{0x0f0f0f0f, 0x0f0f0f0f, 0x0f0f0f0f, 0x00000f0f}, {0xf0f0f0f0, 0xf0f0f0f0, 0xf0f0f0f0, 0x000030f0}};//1:1
+        std::vector<CUMask> masks{{0x0f0f0f0f, 0x0f0f0f0f, 0x0f0f0f0f, 0x0000000f}, {0xf0f0f0f0, 0xf0f0f0f0, 0xf0f0f0f0, 0x000030f0}};//1:1
+        // std::vector<CUMask> masks{{0xf0f0f0f0, 0xf0f0f0f0, 0xf0f0f0f0, 0x000000f0}, {0x0f0f0f0f, 0x0f0f0f0f, 0x0f0f0f0f, 0x00003f0f}, };//1:1
+        // std::vector<CUMask> masks{{0x07070707, 0x07070707, 0x07070707, 0x00000707}, {0xf8f8f8f8, 0xf8f8f8f8, 0xf8f8f8f8, 0x000038f8}};//1:15, 2:14, SE-Packed
+        // std::vector<CUMask> masks{{0x01010101, 0x01010101, 0x01010101, 0x00000000}, {0xfefefefe, 0xfefefefe, 0xfefefefe, 0x00003efe}};//1:15, 2:14, SE-Packed
+        // std::vector<CUMask> masks{{0x0000ffff, 0x00000000, 0x00000000, 0x00000000}, {0xffff0000, 0xffffffff, 0xffffffff, 0x00003fff}};//1:15, 2:14, SE-distributed
+        // std::vector<CUMask> masks{{0x01010101, 0x01010101, 0x01010101, 0x00000101},
+        //                           {0x02020202, 0x02020202, 0x02020202, 0x00000202},
+        //                           };
         if (cu_group_sizes.size()) {
-            masks = generateCUMaskGroups<EXPECTED_NUM_CUS, 8>(cu_group_sizes, pack_se);
+            // masks = generateCUMaskGroups<EXPECTED_NUM_CUS, 8>(cu_group_sizes, pack_se);
         } else {
             masks = pack_se ? generateSEPackedCUMaskGroups<EXPECTED_NUM_CUS, 8>(cu_groups) : generateCUMaskGroups<EXPECTED_NUM_CUS>(cu_groups);
         }
@@ -1026,8 +1039,10 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
             assert(err == hipSuccess && "Create CU masked stream failed");
         }
     } else if (num_streams > 1) {
+        CUMask cuMask{0xfefefefe, 0xfefefefe, 0xfefefefe, 0x00003efe};
         for (auto &s : stream) {
-            hipStreamCreate(&s);
+            // hipStreamCreate(&s);
+            hipExtStreamCreateWithCUMask(&s, cuMask.size(), cuMask.data());
         }
     }
 
@@ -1078,6 +1093,30 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
             auto matBs = split(matB, cu_groups);
             auto matCs = split(matC, cu_groups);
             auto matDs = split(matD, cu_groups);
+            // std::vector<std::size_t> chunks{8, 8};
+            // auto ms = split(m, chunks);
+            // auto ns = split(n, chunks);
+            // auto ks = split(k, chunks);
+            // auto ldas = split(lda, chunks);
+            // auto ldbs = split(ldb, chunks);
+            // auto ldcs = split(ldc, chunks);
+            // auto stride_as = split(stride_a, chunks);
+            // auto stride_bs = split(stride_b, chunks);
+            // auto stride_cs = split(stride_c, chunks);
+            // auto batch_counts = split(batch_count, chunks);
+            // auto alphas = split(alpha, chunks);
+            // auto betas = split(beta, chunks);
+            // auto enable_biases = split(enable_bias, chunks);
+            // auto enable_scaleDs = split(enable_scaleD, chunks);
+            // auto matmuls = split(matmul, chunks);
+            // auto das = split(da, chunks);
+            // auto dbs = split(db, chunks);
+            // auto dcs = split(dc, chunks);
+            // auto dds = split(dd, chunks);
+            // auto matAs = split(matA, chunks);
+            // auto matBs = split(matB, chunks);
+            // auto matCs = split(matC, chunks);
+            // auto matDs = split(matD, chunks);
             std::vector<SafeMatmulPreference> prefs;
 
             for (std::size_t i = 0; i < cu_groups; ++i) {
@@ -1096,8 +1135,11 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
             std::vector<hipblasLtGroupedGemm_t> groupedGemms(cu_groups);
             using HeuristicResults = std::vector<hipblasLtMatmulHeuristicResult_t>;
             std::vector<HeuristicResults> groupedHeuristicResults(cu_groups, HeuristicResults(request_solutions));
-            //std::vector<std::size_t> bestAlgoIndices{41, 3};
-            std::vector<std::size_t> bestAlgoIndices(cu_groups, 0);
+            std::vector<std::size_t> bestAlgoIndices{46, 3};// for full isolated case
+            // std::vector<std::size_t> bestAlgoIndices{116, 70};// for full DFS case
+            // std::vector<std::size_t> bestAlgoIndices{49, 70};// for first half DFS case
+            // std::vector<std::size_t> bestAlgoIndices{3, 94};// for first 2 DFS case
+            // std::vector<std::size_t> bestAlgoIndices(cu_groups, 0);
 
             for (std::size_t i = 0; i < cu_groups; ++i) {
                 CHECK_HIPBLASLT_ERROR(hipblasLtGroupedGemmCreate(
@@ -1111,16 +1153,14 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
                     groupedHeuristicResults[i].resize(returnedAlgoCount);
                 }
 
-                const auto bestAlgoIdx = findBestGroupedAlgoIdx(stream[i], groupedGemms[i], groupedHeuristicResults[i], std::size_t(bench_count));
-                bestAlgoIndices[i] = bestAlgoIdx;
+                // const auto bestAlgoIdx = findBestGroupedAlgoIdx(stream[i], groupedGemms[i], groupedHeuristicResults[i], std::size_t(bench_count));
+                // bestAlgoIndices[i] = bestAlgoIdx;
             }
 
             for (std::size_t i = 0; i < cu_groups; ++i) {
-                auto t = profileGroupedGemm(stream[i], groupedGemms[i], groupedHeuristicResults[i].at(bestAlgoIndices.at(i)), 10);
+                auto t = profileGroupedGemm(stream[i], groupedGemms[i], groupedHeuristicResults[i].at(bestAlgoIndices.at(i)), sync_count);
                 std::cout << "GG[" << i << "]: " << std::to_string(t) << " ms\n";
             }
-
-            // return;
 
             std::cout << "Isolated best indices: [";
 
@@ -1130,25 +1170,26 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
 
             std::cout << "]\n";
 
-            HeuristicResults isolatedHResult(cu_groups);
+            // HeuristicResults isolatedHResult(cu_groups);
 
-            for (std::size_t i = 0; i < cu_groups; ++i) {
-                isolatedHResult[i] = groupedHeuristicResults.at(i).at(bestAlgoIndices.at(i));
-            }
+            // for (std::size_t i = 0; i < cu_groups; ++i) {
+            //     isolatedHResult[i] = groupedHeuristicResults.at(i).at(bestAlgoIndices.at(i));
+            // }
 
-            const auto isolatedTimeMs = profileGroupedGemms(stream.data(), groupedGemms.data(), isolatedHResult.data(), groupedGemms.size(), std::size_t(bench_count));
+            // const auto isolatedTimeMs = profileGroupedGemms(stream.data(), groupedGemms.data(), isolatedHResult.data(), groupedGemms.size(), std::size_t(bench_count));
 
-            std::cout << "Isolated time ms: " << std::to_string(isolatedTimeMs) << "ms\n";
+            // std::cout << "Isolated time ms: " << std::to_string(isolatedTimeMs) << "ms with numRuns: " << bench_count << '\n';
 
-            const auto indices = findBestGroupedGemmAlgoCombinations(stream, groupedGemms, groupedHeuristicResults, std::size_t(bench_count));
+            // const auto indices = findBestGroupedGemmAlgoCombinations(stream, groupedGemms, groupedHeuristicResults, std::size_t(bench_count));
 
-            std::cout << "Best indices found via DFS: [";
+            // std::cout << "Best indices found via DFS: [";
 
-            for (auto i : indices) {
-                std::cout << i << ", ";
-            }
+            // for (auto i : indices) {
+            //     std::cout << i << ", ";
+            // }
 
-            std::cout << "]\n";
+            // std::cout << "]\n";
+            // return;
 
             double eventMs;
             hipEvent_t start, stop;
@@ -1163,6 +1204,7 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
 
             for (std::size_t i = 0; i < cu_groups; ++i) {
                 CHECK_HIPBLASLT_ERROR(hipblasLtGroupedGemmInitialize(groupedGemms[i], &(groupedHeuristicResults.at(i).at(bestAlgoIndices.at(i)).algo)));
+                // CHECK_HIPBLASLT_ERROR(hipblasLtGroupedGemmInitialize(groupedGemms[i], &(groupedHeuristicResults.at(i).at(indices.at(i)).algo)));
             }
 
             for(int sync = 0; sync < sync_count; sync++)
@@ -1216,6 +1258,7 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
             int bestAlgoIdx{};
             double bestAlgoTime{10000};
             double bestAlgoTflops{0.f};
+            //TODO: 3 --> 0
             for(int sol = 0; sol < returnedAlgoCount; sol++)
             {
                 CHECK_HIPBLASLT_ERROR(hipblasLtGroupedGemmInitialize(groupedGemm, &heuristicResult[0][sol].algo));
@@ -1267,8 +1310,11 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
 
                 std::cout << "      Sol " << sol << ": Perf: "
                         << std::to_string(eventMs) << " ms, " << std::to_string(tflops) << " Tflops" << std::endl;
+                //TODO: remove
+                // break;
             }
             std::cout << "         Best sol: " << bestAlgoIdx << ", " << std::to_string(bestAlgoTime) << " ms, " << std::to_string(bestAlgoTflops) << " Tflops\n";
+            profileGroupedGemm(stream[0], groupedGemm, heuristicResult[0][bestAlgoIdx], 1);
         }
     }
     else
@@ -1373,7 +1419,7 @@ void test_hipblaslt(hipblasDatatype_t  in_out_datatype,
                         << ToString(actType[i]) << std::endl;
             }
 
-            for(int sol = 0; sol < returnedAlgoCount; sol++)
+            for(int sol = 3; sol < returnedAlgoCount; sol++)
             {
                 double eventMs;
                 hipEvent_t start, stop;
