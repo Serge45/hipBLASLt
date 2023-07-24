@@ -32,6 +32,115 @@
 
 namespace hipblaslt_ext
 {
+    namespace {
+        hipblasLtMatmulHeuristicResult_t cast(const rocblaslt_matmul_heuristic_result &res) {
+            using std::begin;
+            using std::end;
+            hipblasLtMatmulHeuristicResult_t ret;
+            //seems dangerours
+            memcpy(&ret.algo, &res.algo, sizeof(ret.algo));
+            ret.algo.max_workspace_bytes = res.algo.max_workspace_bytes;
+            ret.wavesCount = res.wavesCount;
+            ret.workspaceSize = res.workspaceSize;
+            ret.state = static_cast<hipblasStatus_t>(res.state);
+            std::copy(begin(res.reserved), end(res.reserved), begin(ret.reserved));
+            return ret;
+        }
+
+        GemmProblemType cast(const rocblaslt::RocGemmProblemType &pType) {
+            GemmProblemType retType;
+            retType.op_a = pType.op_a;
+            retType.op_b   = pType.op_b;
+            retType.type_a = pType.type_a;
+            retType.type_b = pType.type_b;
+            retType.type_c = pType.type_c;
+            retType.type_d = pType.type_d;
+            retType.type_compute = static_cast<hipblasLtComputeType_t>(pType.type_compute);
+            return retType;
+        }
+
+        rocblaslt::RocGemmProblemType cast(const GemmProblemType &pType) {
+            rocblaslt::RocGemmProblemType retType;
+            retType.op_a = pType.op_a;
+            retType.op_b   = pType.op_b;
+            retType.type_a = pType.type_a;
+            retType.type_b = pType.type_b;
+            retType.type_c = pType.type_c;
+            retType.type_d = pType.type_d;
+            retType.type_compute = static_cast<rocblaslt_compute_type>(pType.type_compute);
+            return retType;
+        }
+
+        GemmEpilogue cast(const rocblaslt::RocGemmEpilogue &epi) {
+            GemmEpilogue retEpi;
+            retEpi.aux_ld = epi.aux_ld;
+            retEpi.aux_stride = epi.aux_stride;
+            retEpi.mode = static_cast<hipblasLtEpilogue_t>(epi.mode);
+            return retEpi;
+        };
+
+        rocblaslt::RocGemmEpilogue cast(const GemmEpilogue &epi) {
+            rocblaslt::RocGemmEpilogue retEpi;
+            retEpi.aux_ld = epi.aux_ld;
+            retEpi.aux_stride = epi.aux_stride;
+            retEpi.mode = static_cast<rocblaslt_epilogue>(epi.mode);
+            return retEpi;
+        };
+
+        GemmInputs cast(const rocblaslt::RocGemmInputs &inputs) {
+            GemmInputs retInputs;
+            retInputs.a = inputs.a;
+            retInputs.b = inputs.b;
+            retInputs.c = inputs.c;
+            retInputs.d = inputs.d;
+            retInputs.alpha = inputs.alpha;
+            retInputs.beta = inputs.beta;
+            retInputs.bias = inputs.bias;
+            retInputs.aux = inputs.aux;
+            retInputs.scaleDVec = inputs.scaleDVec;
+            return retInputs;
+        };
+
+        rocblaslt::RocGemmInputs cast(const GemmInputs &inputs) {
+            rocblaslt::RocGemmInputs retInputs;
+            retInputs.a = inputs.a;
+            retInputs.b = inputs.b;
+            retInputs.c = inputs.c;
+            retInputs.d = inputs.d;
+            retInputs.alpha = inputs.alpha;
+            retInputs.beta = inputs.beta;
+            retInputs.bias = inputs.bias;
+            retInputs.aux = inputs.aux;
+            retInputs.scaleDVec = inputs.scaleDVec;
+            return retInputs;
+        };
+        
+        rocblaslt_matmul_desc cast(hipblasLtMatmulDesc_t desc) {
+            static_assert(std::is_pointer<hipblasLtMatmulDesc_t>::value, "Must be pointer type");
+            rocblaslt_matmul_desc retDesc = reinterpret_cast<rocblaslt_matmul_desc>(desc);
+            return retDesc;
+        }
+
+        rocblaslt_matrix_layout cast(hipblasLtMatrixLayout_t layout) {
+            static_assert(std::is_pointer<hipblasLtMatrixLayout_t>::value, "Must be pointer type");
+            rocblaslt_matrix_layout retLayout = reinterpret_cast<rocblaslt_matrix_layout>(layout);
+            return retLayout;
+        }
+
+        template<typename SrcType, typename DstType>
+        std::vector<DstType> vectorConvert(const std::vector<SrcType> &src) {
+            using std::begin;
+            using std::end;
+            std::vector<DstType> ret;
+            ret.reserve(src.size());
+
+            std::transform(begin(src), end(src), std::back_inserter(ret), [](auto i){
+                return cast(i);
+            });
+            return ret;
+        }
+    }
+
     void GemmPreference::setMaxWorkspaceBytes(size_t workspaceBytes)
     {
         m_workspace_bytes = workspaceBytes;
@@ -66,16 +175,19 @@ namespace hipblaslt_ext
         if(m_gemm_count == 0)
             return HIPBLAS_STATUS_INVALID_VALUE;
         auto gemmType = static_cast<rocblaslt::RocGemmType>(m_gemm_type);
-        auto results
-            = reinterpret_cast<std::vector<rocblaslt_matmul_heuristic_result>*>(&heuristicResults);
-        results->clear();
-        return RocBlasLtStatusToHIPStatus(
-            rocblaslt_algo_get_heuristic_cpp((rocblaslt_handle)m_handle,
-                                             gemmType,
-                                             m_data,
-                                             pref.getMaxWorkspaceBytes(),
-                                             requestedAlgoCount,
-                                             *results));
+        std::vector<rocblaslt_matmul_heuristic_result> results;
+        heuristicResults.clear();
+        auto status = rocblaslt_algo_get_heuristic_cpp((rocblaslt_handle)m_handle,
+                                                        gemmType,
+                                                        m_data,
+                                                        pref.getMaxWorkspaceBytes(),
+                                                        requestedAlgoCount,
+                                                        results);
+        if (status == rocblaslt_status_success) {
+            heuristicResults = vectorConvert<rocblaslt_matmul_heuristic_result, hipblasLtMatmulHeuristicResult_t>(results);
+        }
+
+        return RocBlasLtStatusToHIPStatus(status);
     }
 
     hipblasStatus_t GemmInstance::isAlgoSupported(hipblasLtMatmulAlgo_t& algo,
@@ -253,8 +365,7 @@ namespace hipblaslt_ext
                                      void*                   D,
                                      hipblasLtMatrixLayout_t matD)
     {
-        auto rocproblemtypes
-            = reinterpret_cast<std::vector<rocblaslt::RocGemmProblemType>*>(&m_problem_types);
+        auto rocproblemtypes = vectorConvert<GemmProblemType, rocblaslt::RocGemmProblemType>(m_problem_types);
         return RocBlasLtStatusToHIPStatus(
             rocblaslt_gemm_create_cpp((rocblaslt_matmul_desc)matmul_descr,
                                       alpha,
@@ -267,7 +378,7 @@ namespace hipblaslt_ext
                                       (rocblaslt_matrix_layout)matC,
                                       D,
                                       (rocblaslt_matrix_layout)matD,
-                                      (*rocproblemtypes)[0],
+                                      rocproblemtypes[0],
                                       m_data,
                                       m_gemm_count));
     }
@@ -382,11 +493,10 @@ namespace hipblaslt_ext
                                             std::vector<GemmInputs>&   inputs,
                                             GemmProblemType&           problemtype)
     {
-        auto rocepilogue = reinterpret_cast<std::vector<rocblaslt::RocGemmEpilogue>*>(&epilogue);
-        auto rocinputs   = reinterpret_cast<std::vector<rocblaslt::RocGemmInputs>*>(&inputs);
+        auto rocepilogue = vectorConvert<GemmEpilogue, rocblaslt::RocGemmEpilogue>(epilogue);
+        auto rocinputs   = vectorConvert<GemmInputs, rocblaslt::RocGemmInputs>(inputs);
         std::vector<GemmProblemType> tmptype = {problemtype};
-        auto                         rocproblemtype
-            = reinterpret_cast<std::vector<rocblaslt::RocGemmProblemType>*>(&tmptype);
+        auto rocproblemtype = vectorConvert<GemmProblemType, rocblaslt::RocGemmProblemType>(tmptype);
         auto status = RocBlasLtStatusToHIPStatus(rocblaslt_groupedgemm_create_cpp(m,
                                                                                   n,
                                                                                   batch_count,
@@ -399,9 +509,9 @@ namespace hipblaslt_ext
                                                                                   strideB,
                                                                                   strideC,
                                                                                   strideD,
-                                                                                  *rocepilogue,
-                                                                                  *rocinputs,
-                                                                                  *rocproblemtype,
+                                                                                  rocepilogue,
+                                                                                  rocinputs,
+                                                                                  rocproblemtype,
                                                                                   m_data,
                                                                                   m_gemm_count));
         if(status == HIPBLAS_STATUS_SUCCESS)
@@ -422,37 +532,50 @@ namespace hipblaslt_ext
                                             std::vector<hipblasLtMatrixLayout_t>& matC,
                                             std::vector<void*>&                   D,
                                             std::vector<hipblasLtMatrixLayout_t>& matD)
-    {
-        auto matmul_descr_groupedGemm
-            = reinterpret_cast<std::vector<rocblaslt_matmul_desc>*>(&matmul_descr);
-        auto matA_groupedGemm = reinterpret_cast<std::vector<rocblaslt_matrix_layout>*>(&matA);
-        auto matB_groupedGemm = reinterpret_cast<std::vector<rocblaslt_matrix_layout>*>(&matB);
-        auto matC_groupedGemm = reinterpret_cast<std::vector<rocblaslt_matrix_layout>*>(&matC);
-        auto matD_groupedGemm = reinterpret_cast<std::vector<rocblaslt_matrix_layout>*>(&matD);
-        auto A_groupedGemm    = reinterpret_cast<std::vector<const void*>*>(&A);
-        auto B_groupedGemm    = reinterpret_cast<std::vector<const void*>*>(&B);
-        auto C_groupedGemm    = reinterpret_cast<std::vector<const void*>*>(&C);
+    { 
+        auto matmul_descr_groupedGemm = vectorConvert<hipblasLtMatmulDesc_t, rocblaslt_matmul_desc>(matmul_descr);
+        auto matA_groupedGemm = vectorConvert<hipblasLtMatrixLayout_t, rocblaslt_matrix_layout>(matA);
+        auto matB_groupedGemm = vectorConvert<hipblasLtMatrixLayout_t, rocblaslt_matrix_layout>(matB);
+        auto matC_groupedGemm = vectorConvert<hipblasLtMatrixLayout_t, rocblaslt_matrix_layout>(matC);
+        auto matD_groupedGemm = vectorConvert<hipblasLtMatrixLayout_t, rocblaslt_matrix_layout>(matD);
+        std::vector<const void*> A_groupedGemm;
+        std::transform(begin(A), end(A), std::back_inserter(A_groupedGemm), [](auto i){
+            return reinterpret_cast<const void *>(i);
+        });
+        std::vector<const void*> B_groupedGemm;
+        std::transform(begin(B), end(B), std::back_inserter(B_groupedGemm), [](auto i){
+            return reinterpret_cast<const void *>(i);
+        });
+        std::vector<const void*> C_groupedGemm;
+        std::transform(begin(C), end(C), std::back_inserter(C_groupedGemm), [](auto i){
+            return reinterpret_cast<const void *>(i);
+        });
         std::vector<const void*> alpha_groupedGemm, beta_groupedGemm;
         for(int i = 0; i < matmul_descr.size(); i++)
         {
             alpha_groupedGemm.push_back((const void*)(&(alpha[i])));
             beta_groupedGemm.push_back((const void*)(&(beta[i])));
         }
-        auto rocproblemtypes
-            = reinterpret_cast<std::vector<rocblaslt::RocGemmProblemType>*>(&m_problem_types);
+        
+        std::vector<rocblaslt::RocGemmProblemType> rocproblemtypes;
+        std::transform(begin(m_problem_types), end(m_problem_types), std::back_inserter(rocproblemtypes), [](auto i){
+            rocblaslt::RocGemmProblemType returnedType;
+            memcpy(&returnedType, &i, sizeof(rocblaslt::RocGemmProblemType));
+            return returnedType;
+        });
         return RocBlasLtStatusToHIPStatus(
-            rocblaslt_groupedgemm_create_cpp(*matmul_descr_groupedGemm,
+            rocblaslt_groupedgemm_create_cpp(matmul_descr_groupedGemm,
                                              alpha_groupedGemm,
-                                             *A_groupedGemm,
-                                             *matA_groupedGemm,
-                                             *B_groupedGemm,
-                                             *matB_groupedGemm,
+                                             A_groupedGemm,
+                                             matA_groupedGemm,
+                                             B_groupedGemm,
+                                             matB_groupedGemm,
                                              beta_groupedGemm,
-                                             *C_groupedGemm,
-                                             *matC_groupedGemm,
+                                             C_groupedGemm,
+                                             matC_groupedGemm,
                                              D,
-                                             *matD_groupedGemm,
-                                             (*rocproblemtypes),
+                                             matD_groupedGemm,
+                                             rocproblemtypes,
                                              m_data,
                                              m_gemm_count));
     }
@@ -514,20 +637,23 @@ namespace hipblaslt_ext
                                 std::vector<hipblasLtMatmulHeuristicResult_t>& heuristicResults)
     try
     {
-        auto results
-            = reinterpret_cast<std::vector<rocblaslt_matmul_heuristic_result>*>(&heuristicResults);
-        results->clear();
-        return RocBlasLtStatusToHIPStatus(
-            rocblaslt_matmul_get_all_algos_cpp((rocblaslt_handle)handle,
-                                               static_cast<rocblaslt::RocGemmType>(typeGemm),
-                                               opA,
-                                               opB,
-                                               typeA,
-                                               typeB,
-                                               typeC,
-                                               typeD,
-                                               (rocblaslt_compute_type)typeCompute,
-                                               *results));
+        heuristicResults.clear();
+        std::vector<rocblaslt_matmul_heuristic_result> results;
+        auto ret = rocblaslt_matmul_get_all_algos_cpp((rocblaslt_handle)handle,
+                                                      static_cast<rocblaslt::RocGemmType>(typeGemm),
+                                                      opA,
+                                                      opB,
+                                                      typeA,
+                                                      typeB,
+                                                      typeC,
+                                                      typeD,
+                                                      (rocblaslt_compute_type)typeCompute,
+                                                      results);
+
+        if (ret == rocblaslt_status_success) {
+            heuristicResults = vectorConvert<rocblaslt_matmul_heuristic_result, hipblasLtMatmulHeuristicResult_t>(results);
+        }
+        return RocBlasLtStatusToHIPStatus(ret);
     }
     catch(...)
     {
@@ -549,11 +675,12 @@ namespace hipblaslt_ext
                           std::vector<int>&                              algoIndex,
                           std::vector<hipblasLtMatmulHeuristicResult_t>& heuristicResults)
     {
-        auto results
-            = reinterpret_cast<std::vector<rocblaslt_matmul_heuristic_result>*>(&heuristicResults);
-        results->clear();
-        return RocBlasLtStatusToHIPStatus(rocblaslt_matmul_get_algos_from_index_cpp(
-            (rocblaslt_handle)handle, algoIndex, *results));
+        heuristicResults.clear();
+        std::vector<rocblaslt_matmul_heuristic_result> results;
+        auto ret = rocblaslt_matmul_get_algos_from_index_cpp(
+            (rocblaslt_handle)handle, algoIndex, results);
+        heuristicResults = vectorConvert<rocblaslt_matmul_heuristic_result, hipblasLtMatmulHeuristicResult_t>(results);
+        return RocBlasLtStatusToHIPStatus(ret);
     }
 
 } // End of namespace hipblasltext
