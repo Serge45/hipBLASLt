@@ -24,12 +24,14 @@ from .Formatting import __TI_DEBUG_LEVEL__, printExit
 
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Tuple
 
 import pickle
 import subprocess
 import threading
-from functools import lru_cache
+import json
+import os
 
 def fastdeepcopy(x):
     # Note: Some object can't be pickled
@@ -219,9 +221,41 @@ def _tryAssembler(isaVersion: Tuple[int, int, int], assemblerPath: str, asmStrin
 # Get Caps
 ########################################
 
+def _defaultAsmCapsCacheFolder() -> str:
+    return '/tmp/tensilelite'
+
+@lru_cache()
+def _buildAsmCapsCachePath(arch: str, folder: str) -> str:
+    return os.path.join(folder, f'asmCaps_{arch}.json')
+
+def _dumpAsmCapsCache(asmCaps: dict, arch: str, folder: str=_defaultAsmCapsCacheFolder()):
+    path = _buildAsmCapsCachePath(arch, folder)
+    with open(path, 'w') as f:
+        json.dump(asmCaps, f)
+
+def _loadAsmCapsCache(arch: str, folder: str=_defaultAsmCapsCacheFolder()):
+    path = _buildAsmCapsCachePath(arch, folder)
+
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except json.decoder.JSONDecodeError:
+        print("Invalid AsmCaps cache, ignore it")
+
+def _asmCapsCacheExists(arch: str, folder: str=_defaultAsmCapsCacheFolder()):
+    path = _buildAsmCapsCachePath(arch, folder)
+    return os.path.exists(path)
+
 @lru_cache()
 def _initAsmCaps(isaVersion, assemblerPath, isDebug) -> dict:
     """ Determine assembler capabilities by testing short instructions sequences """
+    archName = getGfxName(isaVersion)
+
+    if _asmCapsCacheExists(archName):
+        cache = _loadAsmCapsCache(archName)
+        if cache:
+            return cache
+
     rv = {}
     rv["SupportedISA"]      = _tryAssembler(isaVersion, assemblerPath, "", isDebug)
     rv["HasExplicitCO"]     = _tryAssembler(isaVersion, assemblerPath, "v_add_co_u32 v0,vcc,v0,1", isDebug)
@@ -287,6 +321,8 @@ def _initAsmCaps(isaVersion, assemblerPath, isDebug) -> dict:
     rv["MaxLgkmcnt"] = 15
 
     rv["SupportedSource"] = True
+
+    _dumpAsmCapsCache(rv, archName)
 
     return rv
 
