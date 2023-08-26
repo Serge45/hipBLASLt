@@ -50,6 +50,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from typing import List, Tuple
 from timeit import default_timer as timer
 from copy import deepcopy
 
@@ -452,6 +453,39 @@ def buildKernelSourceAndHeaderFiles(results, outputPath, kernelsWithBuildErrs):
 # Write Solutions and Kernels for BenchmarkClient or LibraryClient
 ################################################################################
 @timing
+def removeInvalidSolutions(generatedResults: List, solutions: List, kernels: List, errorTolerant: bool) -> Tuple[List, List, List]:
+  removeKernels = set()
+  removeKernelNames = set()
+  removeSolutionNames = set()
+  removeResults = set()
+  for kernel, res in Utils.tqdm(zip(kernels, generatedResults)):
+    err, _, _, _, _ = res
+    if err == -2:
+      if not errorTolerant:
+        print(f"\nKernel generation failed for kernel: {kernel['SolutionIndex']}")
+        print(kernel["SolutionNameMin"])
+      removeKernels.add(kernel)
+      kName = Solution.getKeyNoInternalArgs(kernel)
+      if kName not in removeKernelNames:
+        removeKernelNames.add(kName)
+
+      removeResults.add(res)
+  if len(removeKernels) > 0 and not errorTolerant:
+    printExit("** kernel generation failure **")
+
+  for solution in Utils.tqdm(solutions, "Finding invalid solutions"):
+    solutionKernels = solution.getKernels()
+    for kernel in solutionKernels:
+        kName = Solution.getKeyNoInternalArgs(kernel)
+        if kName in removeKernelNames:
+          removeSolutionNames.add(str(solution))
+          break
+
+  return [r for r in generatedResults if r not in removeResults],\
+         [s for s in solutions if str(s) not in removeSolutionNames],\
+         [k for k in kernels if k not in removeKernels]
+
+@timing
 def writeSolutionsAndKernels(outputPath, CxxCompiler, problemTypes, solutions, kernels, kernelHelperObjs, \
     kernelWriterAssembly, errorTolerant=False):
 
@@ -495,47 +529,16 @@ def writeSolutionsAndKernels(outputPath, CxxCompiler, problemTypes, solutions, k
 
   kIter   = zip(kernels, itertools.repeat(kernelWriterAssembly), itertools.repeat(TensileInstructions()))
   results = Common.ParallelMap2(processKernelSource, kIter, "Generating kernels")
-
-  removeKernels = []
-  removeKernelNames = []
-  removeSolutions = []
-  removeResults = []
-  for kernIdx, res in Utils.tqdm(enumerate(results)):
-    (err,src,header,kernelName, filename) = res
-    if(err == -2):
-      if not errorTolerant:
-        print("\nKernel generation failed for kernel: {}".format(kernels[kernIdx]["SolutionIndex"]))
-        print(kernels[kernIdx]["SolutionNameMin"])
-      removeKernels.append(kernels[kernIdx])
-      kName = Solution.getKeyNoInternalArgs(kernels[kernIdx])
-      if kName not in removeKernelNames:
-        removeKernelNames.append(kName)
-      removeResults.append(results[kernIdx])
-  if len(removeKernels) > 0 and not errorTolerant:
-    printExit("** kernel generation failure **")
-  for kern in removeKernels:
-      kernels.remove(kern)
-  for solution in Utils.tqdm(solutions, "Finding invalid solutions"):
-    solutionKernels = solution.getKernels()
-    for kernel in solutionKernels:
-        kName = Solution.getKeyNoInternalArgs(kernel)
-        if kName in removeKernelNames:
-          removeSolutions.append(solution)
-          break
-  for solut in removeSolutions:
-      solutions.remove(solut)
-  for rel in removeResults:
-      results.remove(rel)
-
+  results, solutions, kernels = removeInvalidSolutions(results, solutions, kernels, errorTolerant)
   kernelFiles += buildKernelSourceAndHeaderFiles(results, outputPath, kernelsWithBuildErrs)
 
-  kernelsToBuild = list(kernels)
+  kernelsToBuild = iter(kernels)
   if errorTolerant:
       def success(kernel):
           writer = kernelWriterAssembly
           kernelName = writer.getKernelName(kernel)
           return kernelName not in kernelsWithBuildErrs
-      kernelsToBuild = list(filter(success, kernelsToBuild))
+      kernelsToBuild = filter(success, kernelsToBuild)
   elif len(kernelsWithBuildErrs) > 0:
     print("\nKernel compilation failed in one or more subprocesses. May want to set CpuThreads=0 and re-run to make debug easier")
     printExit("** kernel compilation failure **")
@@ -600,7 +603,7 @@ def writeSolutionsAndKernels(outputPath, CxxCompiler, problemTypes, solutions, k
   Common.popWorkingPath() # build_tmp
   Common.popWorkingPath() # workingDir
 
-  return codeObjectFiles
+  return codeObjectFiles, kernels, solutions
 
 def writeSolutionAndExactTable(scheduleName, deviceNames, schedProbName, problemType, \
                                solutionsForSchedule, solutionNames, exactLogic):
@@ -1110,7 +1113,7 @@ def writeBenchmarkClientFiles(libraryWorkingPath, tensileSourcePath, solutions, 
 
   # write solution, kernels and CMake
   problemType = solutions[0]["ProblemType"]
-  codeObjectFiles = writeSolutionsAndKernels( \
+  codeObjectFiles, kernels, solutions = writeSolutionsAndKernels( \
     libraryWorkingPath, cxxCompiler, [problemType], solutions, kernels, kernelsBetaOnly, \
     kernelWriterAssembly, errorTolerant=True )
 
@@ -1292,9 +1295,9 @@ def TensileCreateLibrary():
                        and (any(logicArch in os.path.splitext(f)[0] for logicArch in logicArchs) \
                        or "hip" in os.path.splitext(f)[0]) ]
 
-  print1("# LibraryLogicFiles:" % logicFiles)
+  print1(f"# LibraryLogicFiles({len(logicFiles)}):")
   for logicFile in logicFiles:
-    print1("#   %s" % logicFile)
+    print1(f"#   {logicFile}")
 
   ##############################################################################
   # Parse config files
@@ -1348,7 +1351,7 @@ def TensileCreateLibrary():
       outputPath )
 
   # write solutions and kernels
-  codeObjectFiles = writeSolutionsAndKernels(outputPath, CxxCompiler, None, solutions,
+  codeObjectFiles, kernels, solutions = writeSolutionsAndKernels(outputPath, CxxCompiler, None, solutions,
                                              kernels, kernelHelperObjs, kernelWriterAssembly)
 
   bothLibSet = set(sourceLibPaths + asmLibPaths)
@@ -1441,7 +1444,7 @@ def TensileCreateLibrary():
   def checkFileExistence(files):
     for filePath in files:
       if not os.path.exists(filePath):
-        printExit("File %s is missing.", filePath)
+        printExit(f"File {filePath} is missing.")
 
   checkFileExistence(itertools.chain(libMetadataPaths, sourceLibPaths, asmLibPaths))
 

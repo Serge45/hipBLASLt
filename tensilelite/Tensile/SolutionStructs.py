@@ -44,9 +44,10 @@ from .CustomKernels import isCustomKernelConfig
 
 from collections import OrderedDict
 from collections.abc import Mapping
+from contextlib import contextmanager
 from enum import Enum
 from functools import lru_cache
-from typing import List
+from typing import Dict, List, Sequence, Tuple
 
 import collections
 import math
@@ -84,6 +85,16 @@ def pvar(state, field):
 
 def roundupRatio(dividend, divisor):
   return int(math.ceil(float(dividend) / float(divisor)))
+
+@contextmanager
+def autoDictValueRestorer(d: Dict, keys: Sequence):
+  orgValues = {k: d[k] for k in keys}
+
+  try:
+    yield d
+  finally:
+    for k in keys:
+      d[k] = orgValues[k]
 
 class Fbs(Enum):
   Free=0     # Expect to be free dimension
@@ -1053,11 +1064,8 @@ class Solution(collections.abc.Mapping):
   # get a list of kernel parameters for this solution
   def getKernels(self):
     kernel = deepcopy(self)
-    kernel._state.update({"Kernel": True})
-    kernels = []
-    kernels.append(kernel)
-    return kernels
-
+    kernel._state["Kernel"] = True
+    return [kernel,]
 
   ########################################
   # create Helper Kernels
@@ -3330,10 +3338,13 @@ class Solution(collections.abc.Mapping):
 
   ########################################
   @ staticmethod
-  def getKeyNoInternalArgs(state):
-    state_copy = deepcopy(state)
-    state_copy["GlobalSplitU"] = "M" if state_copy["GlobalSplitU"] > 1 else state_copy["GlobalSplitU"]
-    return state_copy
+  def getKeyNoInternalArgs(state) -> str:
+    with autoDictValueRestorer(state, ("GlobalSplitU",)) as d:
+      gsu = d["GlobalSplitU"]
+      d["GlobalSplitU"] = "M" if gsu > 1 else gsu
+      kName = str(d)
+
+    return kName
 
   @ staticmethod
   def getNameFull(state):
@@ -3524,14 +3535,9 @@ class Solution(collections.abc.Mapping):
 
   def __hash__(self):
     return hash(str(self) + self._state.get("codeObjectFile", ""))
-    #return hash(self.getAttributes())
 
   def __eq__(self, other):
-    #return isinstance(other, Solution) and self.getAttributes() == other.getAttributes()
-    return isinstance(other, Solution) and str(self) == str(other)
+    if not isinstance(other, Solution):
+      return NotImplemented
 
-  def __ne__(self, other):
-    result = self.__eq__(other)
-    if result is NotImplemented:
-      return result
-    return not result
+    return str(self) == str(other)
