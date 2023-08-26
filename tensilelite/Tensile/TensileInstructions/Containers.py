@@ -287,7 +287,7 @@ class RegisterContainer:
     def __init__(self, regType, regName, regIdx, regNum) -> None:
         self.regType = regType
         self.regIdx  = regIdx
-        self.regNum  = int(math.ceil(regNum))
+        self.regNum  = math.ceil(regNum) if type(regNum) is float else regNum
         self.regName = regName
 
         self.isInlineAsm = False

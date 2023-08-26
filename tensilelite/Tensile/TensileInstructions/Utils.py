@@ -40,27 +40,20 @@ import string
 # Format GPRs
 ########################################
 
-def _gpr(*args):
-    gprType = args[0]
-    args = args[1]
-    if isinstance(args[0], Holder):
+def _gpr(gprType, *args):
+    args = args[0]
+    firstArgType = type(args[0])
+    numRegs = 1 if len(args) == 1 else args[1]
+
+    if firstArgType is Holder:
         idx  = args[0].idx
         name = args[0].name
-        if len(args) == 1:
-            return HolderContainer(gprType, name, idx, 1)
-        elif len(args) == 2:
-            return HolderContainer(gprType, name, idx, args[1])
-    elif isinstance(args[0], int):
-        if len(args) == 1:
-            return RegisterContainer(gprType, None, args[0], 1)
-        elif len(args) == 2:
-            return RegisterContainer(gprType, None, args[0], args[1])
-    elif isinstance(args[0], str):
+        return HolderContainer(gprType, name, idx, numRegs)
+    elif firstArgType is int:
+        return RegisterContainer(gprType, None, args[0], numRegs)
+    elif firstArgType is str:
         name = _generateRegName(args[0])
-        if len(args) == 1:
-            return RegisterContainer(gprType, name, None, 1)
-        elif len(args) == 2:
-            return RegisterContainer(gprType, name, None, args[1])
+        return RegisterContainer(gprType, name, None, numRegs)
     else:
         printExit("Unknown %sgpr name or index"%gprType)
 

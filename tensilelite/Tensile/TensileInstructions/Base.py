@@ -127,6 +127,7 @@ class Item:
     Base class for Modules, Instructions, etc
     Item is a atomic collection of or more instructions and commentsA
     """
+    isInstruction = False
 
     def __init__(self, name: str="") -> None:
         self.parent = ""

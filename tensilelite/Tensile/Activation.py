@@ -24,6 +24,8 @@ import ctypes
 import math
 import struct
 from collections import OrderedDict
+from functools import lru_cache
+from itertools import dropwhile, islice
 
 from .TensileInstructions import Module, TextBlock, HolderContainer, RegisterContainer, \
                           VCC, EXEC, vgpr, sgpr, Holder, fastdeepcopy, DataType, SNop, \
@@ -143,7 +145,7 @@ class ActivationType:
                           ('all',         ActivationTypeRegister('all', False, 0)) ])
 
     def __init__(self, value):
-        if isinstance(value, str):
+        if type(value) is str:
             strValue = value.lower()
             if strValue in self.lookup:
                 self.value = strValue
@@ -151,7 +153,7 @@ class ActivationType:
                 self.value = strValue
             else:
                 raise RuntimeError("Unrecognized activation type %s"%value)
-        elif isinstance(value, ActivationType):
+        elif type(value) is ActivationType:
             self.value = value.value
         else:
             raise RuntimeError("Unrecognized input type %s, should be string or ActivationType"%str(value))
@@ -384,16 +386,13 @@ class ActivationModule:
         return value
 
     def vgprPrefix(self, *args):
-        if isinstance(args[0], int) and self.vgprPrefixFormat:
+        if type(args[0]) is int and self.vgprPrefixFormat:
             vgprStr = self.vgprPrefixFormat%args[0]
         else:
             vgprStr = args[0]
 
-        if len(args) == 1:
-            return vgpr(vgprStr)
-        else:
-            args = args[1]
-            return vgpr(vgprStr, args)
+        numRegs = 1 if len(args) == 1 else args[1]
+        return vgpr(vgprStr, numRegs)
 
     ################################################################################
     ################################################################################
@@ -824,6 +823,9 @@ class ActivationModule:
 
 __FUSE_MAGIC_NAME__ = "dbiw@I$HONIhnjf4_fused"
 
+def dropwhilenext(pred, iterable):
+    return islice(dropwhile(pred, iterable), 1, None)
+
 # Public
 def CombineInstructions(module, fuseDebug = False):
     moduleAndIndex = dict()
@@ -833,26 +835,14 @@ def CombineInstructions(module, fuseDebug = False):
     return module
 
 # Does not support modules with branches
-def CombineInstructionsBetweenModules(module, moduleAndIndex, fuseDebug):
-    index = 0
-    while index < len(module.items()):
-        item = module.items()[index]
-        if isinstance(item, Module):
-            CombineInstructionsBetweenModules(item, moduleAndIndex, fuseDebug)
-            index = module.items().index(item)
-        elif isinstance(item, SNop):
-            pass
-        elif isinstance(item, Instruction):
-            newItem = item
-            if moduleAndIndex:
-                newItem = FuseInstruction(item, moduleAndIndex, fuseDebug)
-                index = module.items().index(newItem)
-            if isinstance(newItem.dst, RegisterContainer):
-                # Update the dict
-                moduleAndIndex[newItem.dst] = newItem
-        index += 1
+def CombineInstructionsBetweenModules(module: Module, moduleAndIndex: dict, fuseDebug: bool):
+    for inst in filter(lambda x: x.isInstruction is True and type(x) is not SNop, module.flatitemIter()):
+        newInst = FuseInstruction(inst, moduleAndIndex, fuseDebug)
 
-def RemoveEmptyBlocks(module):
+        if type(newInst.dst) is RegisterContainer:
+            moduleAndIndex[newInst.dst] = newInst
+
+def RemoveEmptyBlocks(module: Module):
     for idx, item in enumerate(module.items()):
         if isinstance(item, Module):
             newItem = RemoveEmptyBlocks(item)
@@ -861,178 +851,168 @@ def RemoveEmptyBlocks(module):
         return module.items()[0]
     return module
 
-def FuseInstruction(currentInst, moduleAndIndex, fuseDebug):
+def FuseVAdds(currentInst, moduleAndIndex: dict, fuseDebug: bool):
+    '''
+    Fuses if v_add_f16 to v_fma_f16 if v_add_f16 is a self adding instruction.
+    Currently, we only fuse when the vgpr is add by 1 in both instructions.
+    ex. v_add_f16 v0, 1.0, v0
+        +  v_fma_f16 v0, -2.0, v0, 1.0
+        => v_fma_f16 v0, -2.0, v0, 2.0
+    '''
+    currentInstType = type(currentInst)
+    isPK = currentInstType is VAddPKF16
+    outVgpr = currentInst.dst
+    addConst = ""
+    isSelfAddConst = False
+    for param in currentInst.srcs:
+        if param == outVgpr:
+            isSelfAddConst = True
+        if type(param) in (float, int,):
+            if param == 1:
+                addConst = param
+
+    if isSelfAddConst and addConst:
+        oldInst = moduleAndIndex.get(outVgpr)
+        if oldInst and oldInst.isInstruction:
+            if currentInst.instType == InstType.INST_F16:
+                func = VFmaPKF16 if isPK else VFmaF16
+            elif currentInst.instType == InstType.INST_F32:
+                func = VFmaF32
+            else:
+                assert False, "You should not reach here."
+            if type(oldInst) is func and oldInst.srcs[2] == 1.0:
+                # Cannot fuse if the target instruction has any rvalue reassigned or its lvalue
+                # used before the current instruction
+                if not FindAssignAndUse(oldInst, currentInst, outVgpr, outVgpr):
+                    newInst = type(oldInst)(oldInst.dst, *oldInst.srcs, oldInst.sdwa)
+                    newInst.srcs[2] = addConst + newInst.srcs[2]
+                    newInst.comment += " ( + 1 (fused))"
+                    replaceInst(currentInst, newInst, fuseDebug)
+                    removeOldInst(oldInst, currentInst, newInst, fuseDebug)
+                    return newInst
+    return currentInst
+
+def FuseVMuls(currentInst: Instruction, moduleAndIndex: dict, fuseDebug: bool):
+    '''
+    Fuses if v_mul_f16 to v_mul_f16 if the later one is a self multiplying instruction.
+    Only fuses when both instructions multiply constant
+    '''
+    isPK = type(currentInst) is VMulPKF16
+    outVgpr = currentInst.dst
+    mulConst = ""
+    newFuseInst = ""
+    isSelfMulConst = False
+    for param in currentInst.srcs:
+        if param == outVgpr:
+            isSelfMulConst = True
+        # The constant may be an sgpr
+        if type(param) is RegisterContainer and param.regType == 's':
+            oldInst = moduleAndIndex.get(param)
+            if type(oldInst) is SMovB32:
+                oldparam = oldInst.srcs[0]
+                if oldInst.dst == param and type(oldparam) in (float, int,):
+                    # Cannot fuse if another instruction is using the same sgpr before a new assignment occurs
+                    if not FindUse(oldInst, currentInst, param):
+                        mulConst = oldparam
+                        newFuseInst = oldInst
+        if type(param) in (float, int):
+            mulConst = param
+
+    if isSelfMulConst and mulConst:
+        oldInst = moduleAndIndex.get(outVgpr)
+        if oldInst and oldInst.isInstruction:
+            if currentInst.instType == InstType.INST_F16:
+                func = VMulPKF16 if isPK else VMulF16
+            elif currentInst.instType == InstType.INST_F32:
+                func = VMulF32
+            elif currentInst.instType == InstType.INST_F64:
+                func = VMulF64
+            else:
+                assert False, "You should not reach here."
+
+            if type(oldInst) is func:
+                # Cannot fuse if the target instruction has any rvalue reassigned or its lvalue
+                # used before the current instruction
+                if not FindAssignAndUse(oldInst, currentInst, outVgpr, outVgpr):
+                    for paramIdx, param in enumerate(oldInst.srcs):
+                        if type(param) in (float, int,):
+                            newInst = type(oldInst)(oldInst.dst, *oldInst.srcs, oldInst.sdwa)
+                            newValue = param * mulConst
+                            fuseComment = f" (fused {param})"
+                            if newFuseInst:
+                                newFuseInst.srcs[0] = newValue
+                                newInst.srcs[paramIdx] = newFuseInst.dst
+                                newFuseInst.comment += fuseComment
+                            else:
+                                newInst.srcs[paramIdx] = newValue
+                            newInst.comment += fuseComment
+                            replaceInst(currentInst, newInst, fuseDebug)
+                            removeOldInst(oldInst, currentInst, newInst, fuseDebug)
+                            return newInst
+    return currentInst
+
+def FuseInstruction(currentInst: Instruction, moduleAndIndex: dict, fuseDebug: bool):
     assert isinstance(currentInst, Instruction)
-    newInst = None
-    # Fuses if v_add_f16 to v_fma_f16 if v_add_f16 is a self adding instruction.
-    # Currently, we only fuse when the vgpr is add by 1 in both instructions.
-    # ex. v_add_f16 v0, 1.0, v0
-    #     +  v_fma_f16 v0, -2.0, v0, 1.0
-    #     => v_fma_f16 v0, -2.0, v0, 2.0
-    if type(currentInst) in {VAddF16, VAddPKF16, VAddF32}:
-        isPK = type(currentInst) is VAddPKF16
-        outVgpr = currentInst.dst
-        addConst = ""
-        isSelfAddConst = False
-        for param in currentInst.srcs:
-            if param == outVgpr:
-                isSelfAddConst = True
-            if isinstance(param, (float, int)):
-                if param == 1:
-                    addConst = param
-
-        if isSelfAddConst and addConst:
-            oldInst = moduleAndIndex.get(outVgpr)
-            if isinstance(oldInst, Instruction):
-                if currentInst.instType == InstType.INST_F16:
-                    func = VFmaPKF16 if isPK else VFmaF16
-                elif currentInst.instType == InstType.INST_F32:
-                    func = VFmaF32
-                else:
-                    assert("You should not reach here.")
-                if type(oldInst) is func and oldInst.srcs[2] == 1.0:
-                    # Cannot fuse if the target instruction has any rvalue reassigned or its lvalue
-                    # used before the current instruction
-                    if not FindAssignAndUse(oldInst, currentInst, outVgpr, outVgpr):
-                        newInst = type(oldInst)(oldInst.dst, *oldInst.srcs, oldInst.sdwa)
-                        newInst.srcs[2] = addConst + newInst.srcs[2]
-                        newInst.comment += " ( + 1 (fused))"
-                        replaceInst(currentInst, newInst, fuseDebug)
-                        removeOldInst(oldInst, currentInst, newInst, fuseDebug)
-    # Fuses if v_mul_f16 to v_mul_f16 if the later one is a self multiplying instruction.
-    # Only fuses when both instructions multiply constant
-    elif type(currentInst) in {VMulF16, VMulPKF16, VMulF32, VMulF64}:
-        isPK = type(currentInst) is VMulPKF16
-        outVgpr = currentInst.dst
-        mulConst = ""
-        newFuseInst = ""
-        isSelfMulConst = False
-        for param in currentInst.srcs:
-            if param == outVgpr:
-                isSelfMulConst = True
-            # The constant may be an sgpr
-            if type(param) is RegisterContainer and param.regType == 's':
-                oldInst = moduleAndIndex.get(param)
-                if type(oldInst) is SMovB32:
-                    oldparam = oldInst.srcs[0]
-                    if oldInst.dst == param and isinstance(oldparam, (float, int)):
-                        # Cannot fuse if another instruction is using the same sgpr before a new assignment occurs
-                        if not FindUse(oldInst, currentInst, param):
-                            mulConst = oldparam
-                            newFuseInst = oldInst
-            if isinstance(param, (float, int)):
-                mulConst = param
-
-        if isSelfMulConst and mulConst:
-            oldInst = moduleAndIndex.get(outVgpr)
-            if isinstance(oldInst, Instruction):
-                if currentInst.instType == InstType.INST_F16:
-                    func = VMulPKF16 if isPK else VMulF16
-                elif currentInst.instType == InstType.INST_F32:
-                    func = VMulF32
-                elif currentInst.instType == InstType.INST_F64:
-                    func = VMulF64
-                else:
-                    assert("You should not reach here.")
-
-                if type(oldInst) is func:
-                    # Cannot fuse if the target instruction has any rvalue reassigned or its lvalue
-                    # used before the current instruction
-                    if not FindAssignAndUse(oldInst, currentInst, outVgpr, outVgpr):
-                        for paramIdx, param in enumerate(oldInst.srcs):
-                            if isinstance(param, (float, int)):
-                                newInst = type(oldInst)(oldInst.dst, *oldInst.srcs, oldInst.sdwa)
-                                newValue = param * mulConst
-                                formatting = " (fused %f)" if isinstance(param, float) else " (fused %d)"
-                                if newFuseInst:
-                                    newFuseInst.srcs[0] = newValue
-                                    newInst.srcs[paramIdx] = newFuseInst.dst
-                                    newFuseInst.comment += formatting%newValue
-                                else:
-                                    newInst.srcs[paramIdx] = newValue
-                                newInst.comment += formatting%newValue
-                                replaceInst(currentInst, newInst, fuseDebug)
-                                removeOldInst(oldInst, currentInst, newInst, fuseDebug)
-                                break
-    return newInst if newInst else currentInst
+    currentInstType = type(currentInst)
+    if currentInstType in {VAddF16, VAddPKF16, VAddF32}:
+        return FuseVAdds(currentInst, moduleAndIndex, fuseDebug)
+    elif currentInstType in {VMulF16, VMulPKF16, VMulF32, VMulF64}:
+        return FuseVMuls(currentInst, moduleAndIndex, fuseDebug)
+    return currentInst
 
 # This only works for Activation.py
 def FindUse(startInst, targetInst, varTarget):
-    _, isUse = FindUseIter(startInst, targetInst, varTarget)
-    return isUse
+    return FindUseIter(startInst, targetInst, varTarget)
 
 # This only works for Activation.py
-def FindUseIter(startItem, targetInst, varTarget):
-    module = startItem
-    idx = -1
+def FindUseIter(startInst: Instruction, targetInst, varTarget) -> bool:
+    module: Module = startInst.parent
     isEnd = False
     isUse = False
-    if isinstance(startItem, Instruction):
-        module = startItem.parent
-        idx = module.items().index(startItem)
-    assert(isinstance(module, Module))
-    if idx + 1 < len(module.items()[idx + 1:]):
-        for item in module.items()[idx + 1:]:
-            if item is targetInst:
-                pass
-            elif isinstance(item, SNop):
-                pass
-            elif isinstance(item, Instruction):
-                if item.srcs:
-                    for param in item.srcs:
-                        if param == varTarget:
-                            isEnd = True
-                            isUse = True
-                            break
-                elif item.dst == varTarget:
-                    isEnd = True
-                    isUse = False
-            elif isinstance(item, Module):
-                isEnd, isUse = FindUseIter(item, targetInst, varTarget)
-            if isEnd:
-                return isEnd, isUse
-    return False, isUse
+
+    for inst in filter(lambda x: x.isInstruction is True, 
+                       dropwhilenext(lambda x: x is not startInst, module.flatitemIter())):
+
+        if inst in (targetInst, SNop):
+            pass
+        elif inst.srcs:
+            if any(param == varTarget for param in inst.srcs):
+                isEnd, isUse = True, True
+        elif inst.dst == varTarget:
+            isEnd, isUse = True, False
+
+        if isEnd:
+            break
+
+    return isUse
 
 # This only works for Activation.py
 def FindAssignAndUse(startInst, endInst, assignVar, useVar):
-    _, isUse = FindAssignAndUseIter(startInst, endInst, assignVar, useVar)
-    return isUse
+    return FindAssignAndUseIter(startInst, endInst, assignVar, useVar)
 
 # This only works for Activation.py
-def FindAssignAndUseIter(startItem, endInst, assignVar, useVar):
-    module = startItem
-    idx = -1
-    isEnd = False
+def FindAssignAndUseIter(startInst: Instruction, endInst: Instruction, assignVar, useVar) -> bool:
+    module: Module = startInst.parent
     isUse = False
-    if issubclass(type(startItem), Instruction):
-        module = startItem.parent
-        idx = module.items().index(startItem)
-    assert issubclass(type(module), Module)
-    moduleToIter = module.items()[idx + 1:]
-    if idx + 1 < len(moduleToIter):
-        for item in moduleToIter:
-            # Use
-            itemType = type(item)
-            if item is endInst:
-                isEnd = True
-            elif itemType is SNop:
-                pass
-            elif issubclass(itemType, Instruction):
-                if item.dst == assignVar:
-                    isEnd = True
-                    isUse = True
-                # Check use
-                if item.srcs:
-                    for param in item.srcs:
-                        if param == useVar:
-                            isEnd = True
-                            isUse = True
-                            break
-            elif issubclass(itemType, Module):
-                isEnd, isUse = FindAssignAndUseIter(item, endInst, assignVar, useVar)
-            if isEnd:
-                return isEnd, isUse
-    return isEnd, isUse
+    isEnd = False
+
+    for inst in filter(lambda x: x.isInstruction is True, 
+                       dropwhilenext(lambda x: x is not startInst, module.flatitemIter())):
+        if inst == startInst:
+            continue
+
+        instType = type(inst)
+        if instType is SNop:
+            pass
+        elif inst is endInst:
+            isEnd = True
+        elif inst.dst == assignVar or any(param == useVar for param in inst.srcs):
+            isEnd, isUse = True, True
+
+        if isEnd:
+            break
+
+    return isUse
 
 def removeOldInst(removeInst, dstInst, fusedInst, debug):
     module = removeInst.parent
@@ -1084,8 +1064,9 @@ def getMagic(cDataType, value, isPack=False):
         magicNum = fu.u
     return hex(magicNum)
 
+@lru_cache(maxsize=None)
 def getMagicStr(cDataType, value, isPack=False):
-    return str(getMagic(cDataType, value, isPack))
+    return getMagic(cDataType, value, isPack)
 
 def HexToStr(cDataType, isPack, *args):
     if len(args) == 1:
@@ -1093,7 +1074,7 @@ def HexToStr(cDataType, isPack, *args):
         uint32 = ctypes.c_uint(magicNum).value
         if isPack and cDataType.isHalf():
             uint32 = ((uint32 << 16) | uint32)
-        hexStr = str(hex(uint32))
+        hexStr = hex(uint32)
     else:
         raise RuntimeError("Currently does not support multiple args.")
     return hexStr
@@ -1109,22 +1090,17 @@ def ConvertCoeffToHex(module, cDataType, isPack):
             module.items()[itemIdx] = newItem
     return module
 
-def HolderToGpr(module, idx, pf):
-    for itemIdx, item in enumerate(module.items()):
-        if isinstance(item, Module):
-            newItem = HolderToGpr(item, idx, pf)
-            module.items()[itemIdx] = newItem
-        elif isinstance(item, SNop):
-            pass
-        elif isinstance(item, Instruction):
-            if isinstance(item.dst, HolderContainer) and item.dst.regType == pf:
-                item.dst.setRegNum(idx)
-                item.dst = item.dst.getCopiedRC()
-            if item.srcs:
-                for itemIdx, param in enumerate(item.srcs):
-                    if isinstance(param, HolderContainer) and param.regType == pf:
-                        param.setRegNum(idx)
-                        item.srcs[itemIdx] = param.getCopiedRC()
+def HolderToGpr(module: Module, idx, pf):
+    for item in filter(lambda x: type(x) is not SNop and isinstance(x, Instruction), module.flatitemIter()):
+        if type(item.dst) is HolderContainer and item.dst.regType == pf:
+            item.dst.setRegNum(idx)
+            item.dst = item.dst.getCopiedRC()
+
+        if item.srcs:
+            for paramIdx, param in enumerate(item.srcs):
+                if type(param) is HolderContainer and param.regType == pf:
+                    param.setRegNum(idx)
+                    item.srcs[paramIdx] = param.getCopiedRC()
     return module
 
 def addSpace(alignStr, str):
@@ -1271,11 +1247,11 @@ class ActivationInline:
     kStr += addSpace(spaceAlignStr,":%s);\n"%requiredStr)
     return kStr
 
-def createVgprIdxList(module, vgprList: list, regName):
+def createVgprIdxListOrg(module: Module, vgprList: list, regName):
     vlist = [[], []]
     for item in module.items():
         if isinstance(item, Module):
-            tmplist = createVgprIdxList(item, vgprList, regName)
+            tmplist = createVgprIdxListOrg(item, vgprList, regName)
             vlist[0].extend(tmplist[0])
             vlist[1].extend(tmplist[1])
         elif isinstance(item, Instruction):
@@ -1287,3 +1263,19 @@ def createVgprIdxList(module, vgprList: list, regName):
                         elif param.regIdx == vgprIdx:
                             vlist[index].append(param)
     return vlist
+
+def createVgprIdxList(module: Module, vgprList: list, regName):
+    vlist = [[], []]
+
+    for inst in filter(lambda x: x.isInstruction is True ,module.flatitemIter()):
+        for param in [p for p in inst.getParams() if type(p) is RegisterContainer]:
+            for index, vgprIdx in enumerate(vgprList):
+                if param.regName and (param.regName.name == regName) and (param.regName.offsets[0] == vgprIdx):
+                    vlist[index].append(param)
+                elif param.regIdx == vgprIdx:
+                    vlist[index].append(param)
+
+    orgVList = createVgprIdxListOrg(module, vgprList, regName)
+    assert orgVList == vlist
+    return vlist
+

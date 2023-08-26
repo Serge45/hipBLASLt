@@ -38,6 +38,8 @@ from typing import List, Optional, Union
 ################################################################################
 
 class Instruction(Item, abc.ABC):
+    isInstruction = True
+
     def __init__(self, instType: InstType, comment="") -> None:
         Item.__init__(self, "instruction")
         self.instType = instType

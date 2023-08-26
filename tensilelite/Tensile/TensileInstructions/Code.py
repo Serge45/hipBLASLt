@@ -369,6 +369,17 @@ class Module(Item):
                 flatitems.append(i)
         return flatitems
 
+    def itemIter(self):
+        for i in self.itemList:
+            yield i
+
+    def flatitemIter(self):
+        for i in self.itemList:
+            if type(i) is Module:
+                yield from i.flatitemIter()
+            else:
+                yield i
+
     def addTempVgpr(self, vgpr):
         self.tempVgpr = vgpr
 
