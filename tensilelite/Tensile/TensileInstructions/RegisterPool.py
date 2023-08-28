@@ -30,6 +30,7 @@ from .Utils import vgpr, sgpr, roundUpToNearestMultiple
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from itertools import dropwhile
 from typing import List, Optional
 
 import traceback
@@ -62,7 +63,7 @@ class RegisterPool:
   ########################################
   # Init
   # defaultPreventOverflow: control behavior of checkout and checkoutAligned when preventOverflow is not explicitly specificed.
-  def __init__(self, size, type, defaultPreventOverflow, printRP=0):
+  def __init__(self, size, type, defaultPreventOverflow, printRP=False):
     self.printRP=printRP
     self.type = type
     self.defaultPreventOverflow = defaultPreventOverflow
@@ -126,84 +127,110 @@ class RegisterPool:
       else:
         printExit("RegisterPool::remove(%u,%u) pool[%u](%s) = %s" % (start, size, i, self.pool[i].tag, self.pool[i].status))
 
+  def _setRegisterRangeStatus(self, begIdx, endIdx, status, tag):
+    for i in range(begIdx, endIdx + 1):
+      self.pool[i].status = status
+      self.pool[i].tag = tag
+
+  def _getFirstAvailableRegisterIndex(self, size: int, alignment: int) -> int:
+    found = None
+
+    # this step garantees alignment
+    for i in range(0, len(self.pool) - size + 1, alignment):
+      invalid = False
+
+      for j in range(i, i + size):
+        if self.pool[j].status != RegisterPool.Status.Available:
+          invalid = True
+          break
+
+      if not invalid:
+        found = i
+        break
+
+    if self.printRP:
+      print("RP::Found: ", found)
+
+    return found
+
+  def _getLastAvailableRegisterRangeHeadIndex(self):
+    def validOverflowStartIdx(idx):
+      return self.pool[idx].status == RegisterPool.Status.Available
+
+    # where does tail sequence of available registers begin
+    start = next(dropwhile(validOverflowStartIdx, range(len(self.pool) - 1, 0, -1)), None)
+    start = start + 1 if start else len(self.pool)
+
+    if self.printRP:
+      print("RP::Start: ", start)
+
+    return start
+
+  def _isRegisterRangeAvailable(self, begIdx, endIdx):
+    for i in range(begIdx, endIdx + 1):
+      if self.pool[i].status != RegisterPool.Status.Available:
+        return False
+
+    return True
+
+  def _grow(self, size: int):
+    for _ in range(size):
+      self.pool.append(self.Register(RegisterPool.Status.Available, f'grow_by_size_{size}'))
+    return len(self.pool)
+
   ########################################
   # Check Out
   def checkOut(self, size, tag="_untagged_", preventOverflow=-1):
     return self.checkOutAligned(size, 1, tag, preventOverflow)
 
-  def checkOutAligned(self, size, alignment, tag="_untagged_aligned_", preventOverflow=-1):
+  def checkOutAligned(self, size, alignment, tag="_untagged_aligned_", preventOverflow=-1, hintIndex=None):
     if preventOverflow == -1:
       preventOverflow = self.defaultPreventOverflow
-    assert(size > 0)
-    found = -1
-    for i in range(0, len(self.pool)):
-      # alignment
-      if i % alignment != 0:
-        continue
-      # enough space
-      if i + size > len(self.pool):
-        continue
-      # all available
-      allAvailable = True
-      for j in range(0, size):
-        if self.pool[i+j].status != RegisterPool.Status.Available:
-          allAvailable = False
-          i = j+1
-          break
-      if allAvailable:
-        found = i
-        break
-      else:
-        continue
+    assert size > 0
+
+    found = None
+
+    # try hint first if provided
+    if hintIndex is not None:
+      if self._isRegisterRangeAvailable(hintIndex, hintIndex + size - 1):
+        found = hintIndex
+
+    if found is None:
+      found = self._getFirstAvailableRegisterIndex(size, alignment)
 
     # success without overflowing
-    if found > -1:
-      #print "Found: %u" % found
-      for i in range(found, found+size):
-        self.pool[i].status = RegisterPool.Status.InUse
-        self.pool[i].tag = tag
+    if found is not None:
+      self._setRegisterRangeStatus(found, found + size - 1, RegisterPool.Status.InUse, tag)
       self.checkOutSize[found] = size
+
       if self.printRP:
         print("RP::checkOut '%s' (%u,%u) @ %u avail=%u"%(tag, size,alignment, found, self.available()))
-        #print self.state()
+
       return found
     # need overflow
     else:
-      #print "RegisterPool::checkOutAligned(%u,%u) overflowing past %u" % (size, alignment, len(self.pool))
-      # where does tail sequence of available registers begin
-      assert (not preventOverflow)
-      start = len(self.pool)
-      for i in range(len(self.pool)-1, 0, -1):
-        if self.pool[i].status == RegisterPool.Status.Available:
-          self.pool[i].tag = tag
-          start = i
-          continue
-        else:
-          break
-      #print "Start: ", start
-      # move forward for alignment
+      if self.printRP:
+        print(f"RP::checkOutAligned({size}, {alignment}) overflowing past {len(self.pool)}")
+      assert not preventOverflow
 
-      start = roundUpToNearestMultiple(start,alignment)
-      #print "Aligned Start: ", start
+      start = self._getLastAvailableRegisterRangeHeadIndex()
+
+      # move forward for alignment
+      start = roundUpToNearestMultiple(start, alignment)
+
+      if self.printRP:
+        print("RP::Aligned Start: ", start)
+
       # new checkout can begin at start
       newSize = start + size
       oldSize = len(self.pool)
       overflow = newSize - oldSize
-      #print "Overflow: ", overflow
-      for i in range(start, len(self.pool)):
-        self.pool[i].status = RegisterPool.Status.InUse
-        self.pool[i].tag = tag
-      for i in range(0, overflow):
-        if len(self.pool) < start:
-          # this is padding to meet alignment requirements
-          self.pool.append(self.Register(RegisterPool.Status.Available,tag))
-        else:
-          self.pool.append(self.Register(RegisterPool.Status.InUse,tag))
-      self.checkOutSize[start] = size
+
       if self.printRP:
-        print(self.state())
-        print("RP::checkOut' %s' (%u,%u) @ %u (overflow)"%(tag, size, alignment, start))
-      return start
+        print("RP::Overflow: ", overflow)
+
+      self._grow(overflow)
+      return self.checkOutAligned(size, alignment, tag, preventOverflow, start)
 
   def checkOutMulti(self, sizes: List[int], alignment, tags: List[str]):
       assert len(sizes) == len(tags)
