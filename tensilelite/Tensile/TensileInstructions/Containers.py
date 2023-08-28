@@ -270,10 +270,10 @@ class RegName:
     def __hash__(self) -> int:
         return hash(self.__key())
 
-    def __eq__(self, __o: object) -> bool:
-        if not isinstance(__o, RegName):
-            return False
-        return (self.name == __o.name) and (self.offsets == __o.offsets)
+    def __eq__(self, obj: object) -> bool:
+        if type(obj) is not RegName:
+            return NotImplemented
+        return (self.name, self.offsets) == (obj.name, obj.offsets)
 
     def __str__(self) -> str:
         ss = self.name
@@ -354,8 +354,8 @@ class RegisterContainer:
         return result
 
     def __eq__(self, o) -> bool:
-        if not isinstance(o, RegisterContainer):
-            return False
+        if type(o) is not RegisterContainer:
+            return NotImplemented
         # FIXME: should compare only with regIdx
         isSame = (self.regName == o.regName) if (self.regIdx == None) else (self.regIdx == o.regIdx)
         return (self.regType == o.regType) and isSame and (self.regNum == o.regNum)
