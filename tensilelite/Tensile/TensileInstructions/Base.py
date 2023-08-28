@@ -130,7 +130,7 @@ class Item:
     isInstruction = False
 
     def __init__(self, name: str="") -> None:
-        self.parent = ""
+        self.parent = None
         self.name = name
 
     def __deepcopy__(self, memo):
@@ -161,10 +161,7 @@ class Item:
         return int(isinstance(self, ttype))
 
     def prettyPrint(self, indent="") -> str:
-        ostream = ""
-        ostream += "%s%s "%(indent, type(self).__name__)
-        ostream += str(self)
-        return ostream
+        return f"{indent}{type(self).__name__}{str(self)}"
 
 def getGfxName(arch: Tuple[int, int, int]) -> str:
     # convert last digit to hex because reasons

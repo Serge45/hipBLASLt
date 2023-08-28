@@ -88,11 +88,9 @@ class Macro(Item):
         self.add(TextBlock("/* %s */\n"%comment))
 
     def prettyPrint(self,indent=""):
-        ostream = ""
-        ostream += '%s%s "%s"\n'%(indent, type(self).__name__, self.name)
-        for i in self.itemList:
-            ostream += i.prettyPrint(indent.replace("|--", "| ") + "|--")
-        return ostream
+        reprStr = f"{indent}{type(self).__name__} {self.name}"
+        childrenStr = ''.join(i.prettyPrint(indent.replace("|--", "| ") + "|--") for i in self.itemList)
+        return '\n'.join((reprStr, childrenStr,))
 
     def setItems(self, itemList):
         self.itemList = itemList
@@ -179,7 +177,7 @@ class Module(Item):
         """
         Append items to module.
         """
-        assert(isinstance(module, Module))
+        assert isinstance(module, Module)
         for i in module.items():
             self.add(i)
         return module
@@ -190,7 +188,7 @@ class Module(Item):
 
         Returns items to facilitate one-line create/add patterns
         """
-        assert(isinstance(module, Module))
+        assert isinstance(module, Module)
         for i in module.flatitems():
             self.add(i)
         return module
@@ -198,7 +196,7 @@ class Module(Item):
     def findIndex(self, targetItem):
         if isinstance(targetItem, Item):
             return self.itemList.index(targetItem)
-        return -1
+        raise RuntimeError(f'{targetItem} not found')
 
     def addComment(self, comment):
         """
@@ -233,11 +231,9 @@ class Module(Item):
         self.add(TextBlock(block3Line(comment)))
 
     def prettyPrint(self,indent=""):
-        ostream = ""
-        ostream += '%s%s "%s"\n'%(indent, type(self).__name__, self.name)
-        for i in self.itemList:
-            ostream += i.prettyPrint(indent.replace("|--", "| ") + "|--")
-        return ostream
+        reprStr = f"{indent}{type(self).__name__} {self.name}"
+        childrenStr = ''.join(i.prettyPrint(indent.replace("|--", "| ") + "|--") for i in self.itemList)
+        return '\n'.join((reprStr, childrenStr,))
         """
         Test code:
           mod1 = Code.Module("TopModule")
@@ -720,11 +716,6 @@ class _SignatureKernelDescriptorV3(Item):
         kStr += block("Num SGPR   =%u"%self.totalSgprs)
         return kStr
 
-    def prettyPrint(self, indent=""):
-        ostream = ""
-        ostream += "%s%s "%(indent, type(self).__name__)
-        return ostream
-
 class SignatureCodeMetaV3(Item):
     def __init__(self, name, groupSegSize, flatWgSize, totalVgprs = 0, totalSgprs=0):
         super().__init__(name)
@@ -776,11 +767,6 @@ class SignatureCodeMetaV3(Item):
         sa = _SignatureArgumentV3(self.offset, name, kind, type, addrSpaceQual)
         self.argList.append(sa)
         self.offset += sa.size
-
-    def prettyPrint(self, indent=""):
-        ostream = ""
-        ostream += "%s%s "%(indent, type(self).__name__)
-        return ostream
 
 class SignatureBase(Item):
     def __init__(self, kernelName, codeObjectVersion, groupSegmentSize, sgprWorkGroup, \
@@ -840,11 +826,6 @@ class SignatureBase(Item):
             kStr += str(i)
         kStr += str(self.codeMeta)
         return kStr
-
-    def prettyPrint(self, indent=""):
-        ostream = ""
-        ostream += "%s%s "%(indent, type(self).__name__)
-        return ostream
 
 ########################################
 # Signatures
