@@ -1091,7 +1091,7 @@ def ConvertCoeffToHex(module, cDataType, isPack):
     return module
 
 def HolderToGpr(module: Module, idx, pf):
-    for item in filter(lambda x: type(x) is not SNop and isinstance(x, Instruction), module.flatitemIter()):
+    for item in filter(lambda x: type(x) is not SNop and x.isInstruction, module.flatitemIter()):
         if type(item.dst) is HolderContainer and item.dst.regType == pf:
             item.dst.setRegNum(idx)
             item.dst = item.dst.getCopiedRC()
