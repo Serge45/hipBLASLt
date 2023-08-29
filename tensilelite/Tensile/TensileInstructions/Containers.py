@@ -279,7 +279,7 @@ class RegName:
         ss = self.name
         if self.offsets:
             for i in self.offsets:
-                ss += "+%u"%i
+                ss += f"+{i}"
         return ss
 
 class RegisterContainer:
@@ -368,21 +368,22 @@ class RegisterContainer:
 
     def __str__(self) -> str:
         minusStr = "-" if self.isMinus else ""
+
         if self.isInlineAsm:
-            assert(self.regName == None)
-            return "%s%%%d" % (minusStr, self.regIdx)
+            assert self.regName is None
+            return f"{minusStr}%{self.regIdx}"
 
         if self.regName:
+            gprName = f"{self.regType}gpr{str(self.regName)}"
             if self.regNum == 1:
-                return "%s%s[%sgpr%s]"%(minusStr, self.regType, self.regType, str(self.regName))
+                return f"{minusStr}{self.regType}[{gprName}]"
             else:
-                return "%s%s[%sgpr%s:%sgpr%s+%u]"%(minusStr, self.regType, self.regType, str(self.regName), \
-                        self.regType, str(self.regName), self.regNum-1)
+                return f"{minusStr}{self.regType}[{gprName}:{gprName}+{self.regNum-1}]"
         else:
             if self.regNum == 1:
-                return "%s%s%u" % (minusStr, self.regType, self.regIdx)
+                return f"{minusStr}{self.regType}{self.regIdx}"
             else:
-                return "%s%s[%u:%u]" % (minusStr, self.regType, self.regIdx, self.regIdx+self.regNum-1)
+                return f"{minusStr}{self.regType}[{self.regIdx}:{self.regIdx+self.regNum-1}]"
 
 class HolderContainer(RegisterContainer):
     __slots__ = ('regType', 'regName', 'regIdx', 'regNum', 'isInlineAsm', 'isMinus', \

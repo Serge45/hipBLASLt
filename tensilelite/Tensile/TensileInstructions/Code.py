@@ -148,7 +148,7 @@ class Module(Item):
     def __str__(self):
         prefix = f"// {self.name}{{\n" if printModuleNames else ""
         suffix = f"// }} {self.name}\n" if printModuleNames else ""
-        s = "".join(str(x) for x in self.itemList)
+        s = "".join([str(x) for x in self.itemList])
         return "".join((prefix, s, suffix))
 
     def addSpaceLine(self):

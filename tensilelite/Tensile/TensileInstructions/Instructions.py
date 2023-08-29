@@ -222,22 +222,6 @@ class VCmpXInstruction(CommonInstruction):
             l = [l1, l2]
         return l
 
-    def getArgStr(self) -> str:
-        kStr = ""
-        if self.dst:
-            kStr += str(self.dst)
-        if self.dst1:
-            if kStr:
-                kStr += ", "
-            kStr += str(self.dst1)
-        if self.srcs:
-            if kStr:
-                kStr += ", "
-            kStr += str(self.srcs[0])
-        for i in self.srcs[1:]:
-            kStr += ", " + str(i)
-        return kStr
-
     def __str__(self) -> str:
         self.preStr()
         if self.archCaps["CMPXWritesSGPR"]:
