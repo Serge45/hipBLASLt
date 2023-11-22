@@ -47,6 +47,7 @@ from .AsmStoreState import StoreState
 from .Activation import ActivationType
 from .Utils import DataDirection
 
+from collections import defaultdict
 from math import ceil, log
 from copy import deepcopy
 from typing import NamedTuple
@@ -662,8 +663,12 @@ class KernelWriterAssembly(KernelWriter):
 
     if not kernel["DirectToLdsA"] or self.do["KeepDirectToLdsAlloc"]:
         module.add(RegSet("v", "vgprG2LA", self.states.a.startVgprG2L))
+        if self.states.a.startVgprValuCvtTemp >= 0:
+          module.add(RegSet("v", "vgprG2LACvtTmp", self.states.a.startVgprValuCvtTemp))
     if not kernel["DirectToLdsB"] or self.do["KeepDirectToLdsAlloc"]:
         module.add(RegSet("v", "vgprG2LB", self.states.b.startVgprG2L))
+        if self.states.b.startVgprValuCvtTemp >= 0:
+          module.add(RegSet("v", "vgprG2LBCvtTmp", self.states.b.startVgprValuCvtTemp))
     if kernel["ProblemType"]["Sparse"] and not kernel["DirectToVgprSparseMetadata"]:
         module.add(RegSet("v", "vgprG2LMetadata", self.states.m.startVgprG2L))
 
@@ -6390,7 +6395,16 @@ class KernelWriterAssembly(KernelWriter):
 
     tc = tP["tensorChar"]
     imod = Module()
-    isBpeInputLarger = True if tP["bpeGR"] > tP["bpe"] else False
+
+    def calculateTmpVgprOffset(tP: dict, blockWidth: float) -> int:
+      if tP["tensorChar"] == "A":
+        return self.states.a.numVgprG2L
+      elif tP["isM"]:
+        return self.states.m.numVgprG2L
+      elif blockWidth == 0.25:
+        return self.states.b.numVgprG2L // 2
+      else:
+        return 0
 
     def localWriteBody(tP):
       tc = tP["tensorChar"]
@@ -6418,27 +6432,27 @@ class KernelWriterAssembly(KernelWriter):
       tmpLocalWriteAddr = -1
 
       # using _ds_store_b8: need one more vgpr space to do lshr
-      tmpVgprOffset = ((self.states.a.numVgprG2L if (tP['tensorChar'] == 'A') else self.states.m.numVgprG2L if tP["isM"] else self.states.b.numVgprG2L) / 2) if (blockWidth == 0.25) else 0
+      tmpVgprOffset = calculateTmpVgprOffset(tP, blockWidth)
 
       # if transposing, positions of sPerp and sPara are transposed
       instructionCnt = 0
       fp16AltMap = {}
-      g2lIdxDict = {}
+      g2lIdxDict = defaultdict(lambda: -1)
       regTmpVgprBlock = None
       for perp in range(0, tP["nrp"]):
-        localWriteCode = imod.add(Module("LocalWrite%u perp=%d"%(instructionCnt,perp)))
+        localWriteCode = imod.add(Module("LocalWrite%u perp=%d"%(instructionCnt, perp)))
         lwa = "LocalWriteAddr%s"%tc  # default
 
         for para in range(0, tP["nrc"]):
           if para>=1:
-            localWriteCode = imod.add(Module("LocalWrite%u perp=%d para=%d"%(instructionCnt,perp,para)))
+            localWriteCode = imod.add(Module("LocalWrite%u perp=%d para=%d"%(instructionCnt, perp, para)))
 
           for s in range(0, max(tP["nwcv"],tP["nwpv"])//tP["nwcvpi"]):
             localWriteCVTCode = Module()
             sPerp = 0
             sPara = 0
             needToSplitMetadata = False
-            if tP["tlu"] != kernel["UnrollMajorLDS%s" % tP["tensorChar"]]:
+            if tP["tlu"] != kernel["UnrollMajorLDS%s" % tc]:
               if tP["wtc"]:
                 sPerp = s
             else:
@@ -6447,21 +6461,24 @@ class KernelWriterAssembly(KernelWriter):
                 needToSplitMetadata = tP["isM"]
 
             #print("perp:{}/{} para:{}/{} sPerp:{} sPara:{}".format(perp,tP["nrp"],para,tP["nrc"],sPerp,sPara))
-            (offset, i, comment) = self.calculateLdsWriteOffset(perp, para, sPerp, sPara, kernel, tP)
+            (offset, lwInstIndex, comment) = self.calculateLdsWriteOffset(perp, para, sPerp, sPara, kernel, tP)
 
             # Need refactor, the pattern < glvw in fp8 is not the same as the original.
             # Thus the offset calculation here does not match global read.
+            bpeGRRatio = tP["bpeGR"] // tP["bpe"]
+            isBpeInputLarger = tP["bpeGR"] > tP["bpe"]
+
             if tP["glvw"] <= 2:
-              g2lIdx = i * blockWidth
+              g2lIdx = lwInstIndex * blockWidth
               if isBpeInputLarger:
-                g2lIdx *= (tP["bpeGR"]// tP["bpe"])
+                g2lIdx *= bpeGRRatio
               g2lIdx = int(g2lIdx)
             else:
-              g2lIdx = int(i * blockWidth)
+              g2lIdx = int(lwInstIndex * blockWidth)
               if isBpeInputLarger:
-                g2lIdx *= (tP["bpeGR"]// tP["bpe"])
+                g2lIdx *= bpeGRRatio
 
-            graIdx = i * self.states.rpgo if kernel["BufferLoad"] else i * self.states.rpga
+            graIdx = lwInstIndex * self.states.rpgo if kernel["BufferLoad"] else lwInstIndex * self.states.rpga
 
             if tP["isM"]:
               if not needToSplitMetadata:
@@ -6470,10 +6487,7 @@ class KernelWriterAssembly(KernelWriter):
             # If g2lIdx is already in the dict and blockWidth < 1, the data may
             # be packed into one register.
             instHi = 0
-            if g2lIdx in g2lIdxDict:
-              g2lIdxDict[g2lIdx] += 1
-            else:
-              g2lIdxDict[g2lIdx] = 0
+            g2lIdxDict[g2lIdx] += 1
             instHi = g2lIdxDict[g2lIdx]
 
             if self.states.archCaps["HasEccHalf"]:
@@ -6481,7 +6495,7 @@ class KernelWriterAssembly(KernelWriter):
               eccinstHi = instHi
               # FIXME: Workaround, unique pattern in 8bit + glvw == 2...
               if tP["bpe"] == tP["bpeGR"] and (tP["globalReadInstruction"].totalWidth) == 0.5 and (blockWidth == 0.25) and not tP["isM"]:
-                eccinstHi = i // 2
+                eccinstHi = lwInstIndex // 2
               eccOffset = _getEccOffset(tP["globalReadInstruction"].totalWidth, bpr=self.states.bpr, bpe=max(tP["bpeGR"], tP["bpe"]), \
                 glvw=tP["glvw"], idx=eccinstHi, numVgprG2L=numVgprG2L)
             else:
@@ -6511,7 +6525,7 @@ class KernelWriterAssembly(KernelWriter):
             for _ in range(0, numBlocks):
               # FIXME: In the future all registers should pass from global read instead of recalculate them
               if globalBlockWidth == blockWidth and tP["glvw"] == 1:
-                paramList.append(vgpr("G2L%s+%u"%(tc, self.vgprs.globalReadRegisters[tc][i]), blockWidth))
+                paramList.append(vgpr("G2L%s+%u"%(tc, self.vgprs.globalReadRegisters[tc][lwInstIndex]), blockWidth))
               elif blockWidth == 1:
                 paramList.append(vgpr("G2L%s+%u"%(tc, g2lIdx)))
                 numsOfRegister.append(1)
@@ -6542,8 +6556,7 @@ class KernelWriterAssembly(KernelWriter):
                                     vop3=VOP3PModifiers(op_sel=[1,1,0])))
                 self.vgprPool.checkIn(vgprTmp)
 
-            for oIdx in range(0, numOffsets):
-              paramList.append(offset)
+            paramList.extend([offset] * numOffsets)
 
             #print "offset", offset
 

@@ -50,7 +50,7 @@ class SIA3(SIA):
         else:
             numLocalWriteModPerMfma = roundUp(kernel["LocalWritePerMfma"]*PRECISION)
 
-        AssignGRPMandLWPM(writer, kernel, numLocalWriteModPerMfma)
+        assignGRPMandLWPM(writer, kernel, numLocalWriteModPerMfma)
         localWriteEndIter = fixLocalWriteEndMfmaIndex(writer, kernel, tensorParametersA, tensorParametersB, \
             globalReadIncACode, globalReadIncBCode, numMfmaBetweenLWandBarrier, lastLoop)
         numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode = getScheduleParamMfma(writer)
@@ -341,7 +341,7 @@ def getNumLocalWritePerMfma(writer, kernel, lwStartMfmaIndex):
         newValue = roundUp((writesToSched+1 + (oldValue - (writesToSched+1) % oldValue) + oldValue%PRECISION) / numMfmaCanSched)
     return newValue
 
-def AssignGRPMandLWPM(writer, kernel, numLocalWriteModPerMfma):
+def assignGRPMandLWPM(writer, kernel, numLocalWriteModPerMfma):
     #####
     # Assign GRPM and LWPM
     #####
