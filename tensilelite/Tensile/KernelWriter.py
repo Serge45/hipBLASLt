@@ -70,6 +70,7 @@ class MatrixInfo:
   startVgprValu: int             = -1
   startVgprValuPack: int         = -1
   startVgprValuPackTemp: int     = -1
+  startVgprValuCvtTemp: int      = -1
 
   numSgprStrides: int            = -1
 
@@ -502,10 +503,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
     if lastLc:
       self.codes.perIterLocalWriteCodeNGLL = [ Module() for i in range (kernel["LoopIters"]) ]
     self.states.perIterLocalWriteCanSkip = [ 0 for i in range (kernel["LoopIters"]) ]
-    assert([item.name for item in self.codes.globalReadIncrements.itemList] == ['globalReadIncrementA', 'globalReadIncrementB'])
+    assert [item.name for item in self.codes.globalReadIncrements.itemList] == ['globalReadIncrementA', 'globalReadIncrementB']
 
-    globalReadIncACode  = self.codes.globalReadIncrements.findNamedItem("globalReadIncrementA")
-    globalReadIncBCode  = self.codes.globalReadIncrements.findNamedItem("globalReadIncrementB")
+    globalReadIncACode = self.codes.globalReadIncrements.findNamedItem("globalReadIncrementA")
+    globalReadIncBCode = self.codes.globalReadIncrements.findNamedItem("globalReadIncrementB")
 
     if skipGlobalReadInc:
       globalReadIncACode  = Module()
@@ -2193,12 +2194,9 @@ class KernelWriter(metaclass=abc.ABCMeta):
     module.add(self.openLoop(kernel, tensorParametersA, tensorParametersB, self.states.unrollIdx, beginLabelOnly=False))
 
     for lc in range(0, loopCopies):
-      loopIndex = lc
-      if loopIndex >= loopCopies:
-        loopIndex -= loopCopies
       # loop body code generation
       finalLoop = lc == loopCopies - 1
-      module.add(self.loopBody( kernel, tensorParametersA, tensorParametersB, pack, loopIndex, loopCopies, finalLoop ))
+      module.add(self.loopBody( kernel, tensorParametersA, tensorParametersB, pack, lc, loopCopies, finalLoop ))
 
     module.addComment1("Before NLL: Check VGPR.checkin for INT8 LW")
 
@@ -2534,7 +2532,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
   ##############################################################################
   # Init Kernel
   ##############################################################################
-  def initKernel(self, kernel, tensorParametersA, tensorParametersB):
+  def initKernel(self, kernel):
     assert kernel["KernelLanguage"] == "Assembly"
     self.language   = "ASM"
     # ISA version, such as 803
@@ -2785,8 +2783,8 @@ class KernelWriter(metaclass=abc.ABCMeta):
     itP["A"] = readWriteVectors("A", vwa, kernel)
     itP["B"] = readWriteVectors("B", vwb, kernel)
 
-    self.getTensorParameters(tensorParametersA, kernel, itP, "A")
-    self.getTensorParameters(tensorParametersB, kernel, itP, "B")
+    tensorParametersA = self.getTensorParameters(kernel, itP, "A")
+    tensorParametersB = self.getTensorParameters(kernel, itP, "B")
 
     tensorParametersA["PackedIndices"] = kernel["PackedC%uIndicesX"%tensorParametersA["tile01Idx"]]
     tensorParametersB["PackedIndices"] = kernel["PackedC%uIndicesX"%tensorParametersB["tile01Idx"]]
@@ -2798,8 +2796,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
     if kernel["ProblemType"]["Sparse"]:
       if not kernel["DirectToVgprSparseMetadata"]:
         itP["Metadata"] = readWriteVectors("Metadata", vwm, kernel)
-        tensorParametersM = {}
-        self.getTensorParameters(tensorParametersM, kernel, itP, "Metadata")
+        tensorParametersM = self.getTensorParameters(kernel, itP, "Metadata")
         tensorParametersM["localReadOffset"] = 0
         tensorParametersM["PackedIndices"] = kernel["PackedC%uIndicesX"%tensorParametersM["tile01Idx"]]
         if  kernel["ProblemType"]["Sparse"] == 2:
@@ -3315,6 +3312,16 @@ class KernelWriter(metaclass=abc.ABCMeta):
       self.states.b.startVgprValuPackTemp = vgprIdx
       vgprIdx += 1
 
+    #F8H
+    if tensorParametersA["bpe"] != tensorParametersA["bpeGR"]:
+      self.states.a.startVgprValuCvtTemp = vgprIdx
+      vgprIdx += 2 * kernel["GlobalReadVectorWidthA"] * tensorParametersA["bpeGR"] // 4
+
+    #HF8
+    if tensorParametersB["bpe"] != tensorParametersB["bpeGR"]:
+      self.states.b.startVgprValuCvtTemp = vgprIdx
+      vgprIdx += 2 * kernel["GlobalReadVectorWidthB"] * tensorParametersB["bpeGR"] // 4
+
     if kernel["ProblemType"]["Sparse"]:
       if kernel["DirectToVgprSparseMetadata"]:
         self.states.m.startVgprValu = vgprIdx
@@ -3794,6 +3801,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
     if self.db["ForceEdgeStores"] : print ("\n***WARNING: ForceEdgeStores enabled, may impact performance\n")
     if self.db["AssertNoEdge"] : print ("\n***WARNING: AssertNoEdge enabled, may impact functionality and performance\n")
     if self.db["PrintRP"] : print ("\n***WARNING: PrintRP enabled, may generate verbose output\n")
+    return tensorParametersA, tensorParametersB
 
   ##############################################################################
   # Function Signature
@@ -3826,7 +3834,8 @@ class KernelWriter(metaclass=abc.ABCMeta):
   ##############################################################################
   # Get Params For Tensor A/B
   ##############################################################################
-  def getTensorParameters(self, tP, kernel, itP, cM):
+  def getTensorParameters(self, kernel, itP, cM) -> dict:
+    tP = {}
     tP["mirror"] = bool(kernel["ProblemType"]["MirrorDims%s" % (cM)])
 
     if cM == "A" or (kernel["ProblemType"]["Sparse"] == 1 and cM == "Metadata"): # A
@@ -3878,6 +3887,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
     tP["localWriteSwapByteOffset"] = 0
     tP["gpr"] = {}
     tP["metadataWriteSwapByteOffset"] = 0
+    return tP
 
   ##############################################################################
   # Global Read Addresses: Tile Assignment A/B
@@ -4413,9 +4423,7 @@ for codeObjectFileName in codeObjectFileNames:
 
 
     fileString = ""
-    tensorParametersA = {}
-    tensorParametersB = {}
-    self.initKernel(kernel, tensorParametersA, tensorParametersB )
+    tensorParametersA, tensorParametersB = self.initKernel(kernel)
     self.stringIdx = 0
     (error, kb) = self.kernelBody( kernel, tensorParametersA, tensorParametersB)
     fileString += str(kb)
