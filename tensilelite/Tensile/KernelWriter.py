@@ -51,6 +51,18 @@ from typing import Dict, NamedTuple, Tuple, Type
 from math import ceil
 from enum import IntEnum
 
+# NamedTuple is immutable
+class IntermediateTPValues(NamedTuple):
+  numReadsTile: int = -1
+  numReadsUnroll: int = -1
+  readTileDimVector: bool = False
+  writeTileDimComponents: bool = False
+  numWritesCoalVecComp: int = -1
+  numWritesPerpVecComp: int = -1
+  # convert tile/unroll to para/perp
+  numReadsCoalVecComp: int = -1
+  numReadsPerpVecComp: int = -1
+
 class GlobalReadMode(IntEnum):
   PRELOOP = 0
   INLOOP = 1
@@ -2748,18 +2760,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
       self.states.numMfmaPerIter = kernel["MIWaveTile"][0] * kernel["MIWaveTile"][1] * kernel["InnerUnroll"]
       if kernel["ProblemType"]["DataType"].isComplex(): self.states.numMfmaPerIter *= 4
 
-    # NamedTuple is immutable
-    class intermediateTPValues(NamedTuple):
-      numReadsTile: int = -1
-      numReadsUnroll: int = -1
-      readTileDimVector: bool = False
-      writeTileDimComponents: bool = False
-      numWritesCoalVecComp: int = -1
-      numWritesPerpVecComp: int = -1
-      # convert tile/unroll to para/perp
-      numReadsCoalVecComp: int = -1
-      numReadsPerpVecComp: int = -1
-
     def readWriteVectors(mat, vw, kernel):
       ########################################
       # read vectors or vector components
@@ -2790,7 +2790,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
         numWritesCoalVecComp = 1
         numWritesPerpVecComp = vw
 
-      return intermediateTPValues(numReadsTile, numReadsUnroll, readTileDimVector, \
+      return IntermediateTPValues(numReadsTile, numReadsUnroll, readTileDimVector, \
         writeTileDimComponents, numWritesCoalVecComp, numWritesPerpVecComp, \
         numReadsCoalVecComp, numReadsPerpVecComp)
 
@@ -3833,7 +3833,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
   ##############################################################################
   # Get Params For Tensor A/B
   ##############################################################################
-  def getTensorParameters(self, kernel, itP, cM) -> dict:
+  def getTensorParameters(self, kernel, itP: Dict[str, IntermediateTPValues], cM) -> dict:
     tP = {}
     tP["mirror"] = bool(kernel["ProblemType"]["MirrorDims%s" % (cM)])
 
