@@ -526,7 +526,8 @@ def writeSolutionsAndKernels(outputPath, CxxCompiler, problemTypes, solutions, k
         kernel.duplicate = False
 
   kIter   = zip(kernels, itertools.repeat(kernelWriterAssembly), itertools.repeat(TensileInstructions()))
-  results = Common.ParallelMap2(processKernelSource, kIter, "Generating kernels")
+  # results = Common.ParallelMap2(processKernelSource, kIter, "Generating kernels")
+  results = [processKernelSource(*i) for i in kIter]
 
   removeKernels = []
   removeKernelNames = []

@@ -49,6 +49,12 @@ import collections
 from dataclasses import dataclass, field
 from typing import Dict, NamedTuple, Tuple, Type
 from math import ceil
+from enum import IntEnum
+
+class GlobalReadMode(IntEnum):
+  PRELOOP = 0
+  INLOOP = 1
+  TAILLOOP = 2
 
 # Make const values immutable
 class ConstValues(NamedTuple):
@@ -1492,10 +1498,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
       module.add(self.openSumAtLeastUnroll(kernel, prefetch=True, isOptNLL=isOptNLL))
       moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParametersA, usePlaceHolder=False)
       module.add(replaceHolder(moduleTmp, 0))
-      module.add(self.globalReadDo(kernel, 0, tensorParametersA))
+      module.add(self.globalReadDo(kernel, GlobalReadMode.PRELOOP, tensorParametersA))
       moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParametersB, usePlaceHolder=False)
       module.add(replaceHolder(moduleTmp, 0))
-      module.add(self.globalReadDo(kernel, 0, tensorParametersB))
+      module.add(self.globalReadDo(kernel, GlobalReadMode.PRELOOP, tensorParametersB))
       module.add(self.globalReadIncrementAB(kernel, tensorParametersA, tensorParametersB, self.states.unrollIdx, pfi))
 
     module.addComment2("End setupNewTile")
@@ -1741,9 +1747,9 @@ class KernelWriter(metaclass=abc.ABCMeta):
     # unrolled loop: global read A, B
     # M0 update for directToLds
     self.codes.dtlsM0UpdateA = self.directToLdsM0Update(kernel, 1, tensorParametersA, usePlaceHolder=True)
-    self.codes.globalReadA = self.globalReadDo(kernel, 1, tensorParametersA, unrollLoopIdx=lc)
+    self.codes.globalReadA = self.globalReadDo(kernel, GlobalReadMode.INLOOP, tensorParametersA, unrollLoopIdx=lc)
     self.codes.dtlsM0UpdateB = self.directToLdsM0Update(kernel, 1, tensorParametersB, usePlaceHolder=True)
-    self.codes.globalReadB = self.globalReadDo(kernel, 1, tensorParametersB, unrollLoopIdx=lc)
+    self.codes.globalReadB = self.globalReadDo(kernel, GlobalReadMode.INLOOP, tensorParametersB, unrollLoopIdx=lc)
 
     # unrolled loop: increment global read addresses
     self.codes.globalReadIncrements = self.globalReadIncrementAB(kernel, tensorParametersA, tensorParametersB, self.states.unrollIdx, 0)
@@ -2142,9 +2148,9 @@ class KernelWriter(metaclass=abc.ABCMeta):
       if kernel["PrefetchGlobalRead"] == 2:
         module.add(self.openPrefetchGlobalRead2(kernel))
         module.add(self.directToLdsM0Update(kernel, 1, tensorParametersA))
-        module.add(self.globalReadDo(kernel, 0, tensorParametersA))
+        module.add(self.globalReadDo(kernel, GlobalReadMode.PRELOOP, tensorParametersA))
         module.add(self.directToLdsM0Update(kernel, 1, tensorParametersB))
-        module.add(self.globalReadDo(kernel, 0, tensorParametersB))
+        module.add(self.globalReadDo(kernel, GlobalReadMode.PRELOOP, tensorParametersB))
 
         # swap local ptrs again if DirectToLds is enabled
         if kernel["DirectToLdsA"]:
@@ -2314,12 +2320,12 @@ class KernelWriter(metaclass=abc.ABCMeta):
       moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParametersA)
       module.add(replaceHolder(moduleTmp, 0))
       module.addComment1("global read A")
-      module.add(self.globalReadDo(kernel, 2, tensorParametersA))
+      module.add(self.globalReadDo(kernel, GlobalReadMode.TAILLOOP, tensorParametersA))
       module.addComment1("Update M0 for DTLDS")
       moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParametersB)
       module.add(replaceHolder(moduleTmp, 0))
       module.addComment1("global read B")
-      module.add(self.globalReadDo(kernel, 2, tensorParametersB))
+      module.add(self.globalReadDo(kernel, GlobalReadMode.TAILLOOP, tensorParametersB))
       module.add(self._wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "2wait for global read"))
       module.add(self._syncThreads(kernel))
 
@@ -3092,54 +3098,38 @@ class KernelWriter(metaclass=abc.ABCMeta):
         if self.states.lrvwTileMetadata > 1 and tensorParametersM["bpe"] < 4:
           self.states.m.numVgprValu = self.states.m.numVgprValuPerBlock * kernel["InnerUnroll"]
 
+    def calculateG2LResources(directToLds: bool, keepDirectToLdsAlloc: bool,
+                              tensorParameters: dict,
+                              vw: int, nlc: int, nlp: int,
+                              states: StateValues) -> Tuple[int, int]:
+      '''
+      num vgprs: global -> local elements
+      '''
+      numVgprG2LAllocated = 0
+      numVgprG2L = 0
+      numVgprG2LAllocatedLocal = 0
+      if not directToLds or keepDirectToLdsAlloc:
+        bpe = tensorParameters["bpe"]
+        bpeMax = max(tensorParameters["bpeGR"], bpe)
+        numVgprG2L = roundUp((nlc * nlp * \
+          vw * bpeMax) / states.bpr)
+        if states.archCaps["HasEccHalf"]:
+          tp      = states.bpr if bpeMax * vw < states.bpr else bpeMax * vw
+          tpLocal = states.bpr if bpe * vw < states.bpr else bpe * vw
+          numVgprG2LAllocated = roundUp((nlc * nlp * tp) / self.states.bpr)
+          numVgprG2LAllocatedLocal = roundUp((nlc * nlp * tpLocal) / self.states.bpr)
+        else:
+          numVgprG2LAllocated = numVgprG2L
+      # using _ds_store_b8: need one more vgpr space to do lshr
+      if tensorParameters["localWriteInstruction"].blockWidth == 0.25:
+        numVgprG2L *= 2
+        numVgprG2LAllocated = numVgprG2LAllocated + numVgprG2LAllocatedLocal
+      return numVgprG2L, numVgprG2LAllocated
 
-    ####################################
-    # num vgprs: global -> local elements
-    self.states.a.numVgprG2L = 0
-    numVgprG2Local = 0
-    numVgprG2LAllocatedLocal = 0
-    if not kernel["DirectToLdsA"] or self.do["KeepDirectToLdsAlloc"]:
-      bpeMax = max(tensorParametersA["bpeGR"], tensorParametersA["bpe"])
-      self.states.a.numVgprG2L = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
-        kernel["GlobalReadVectorWidthA"] * bpeMax) / (float)(self.states.bpr))
-      numVgprG2Local = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
-        kernel["GlobalReadVectorWidthA"] * tensorParametersA["bpe"]) / (float)(self.states.bpr))
-      if self.states.archCaps["HasEccHalf"]:
-        tpA      = self.states.bpr if bpeMax * vwa < self.states.bpr else bpeMax * vwa
-        tpALocal = self.states.bpr if tensorParametersA["bpe"] * vwa < self.states.bpr else tensorParametersA["bpe"] * vwa
-        self.states.a.numVgprG2LAllocated = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
-          tpA) / (float)(self.states.bpr))
-        numVgprG2LAllocatedLocal = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
-          tpALocal) / (float)(self.states.bpr))
-      else:
-        self.states.a.numVgprG2LAllocated = self.states.a.numVgprG2L
-    # using _ds_store_b8: need one more vgpr space to do lshr
-    if tensorParametersA["localWriteInstruction"].blockWidth == 0.25:
-      self.states.a.numVgprG2L = self.states.a.numVgprG2L * 2
-      self.states.a.numVgprG2LAllocated = self.states.a.numVgprG2LAllocated + numVgprG2LAllocatedLocal
-
-    self.states.b.numVgprG2L = 0
-    numVgprG2Local = 0
-    numVgprG2LAllocatedLocal = 0
-    if not kernel["DirectToLdsB"] or self.do["KeepDirectToLdsAlloc"]:
-      bpeMax = max(tensorParametersB["bpeGR"], tensorParametersB["bpe"])
-      self.states.b.numVgprG2L = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
-        kernel["GlobalReadVectorWidthB"] * bpeMax) / (float)(self.states.bpr))
-      numVgprG2Local = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
-        kernel["GlobalReadVectorWidthB"] * tensorParametersB["bpe"]) / (float)(self.states.bpr))
-      if self.states.archCaps["HasEccHalf"]:
-        tpB      = self.states.bpr if bpeMax * vwb < self.states.bpr else bpeMax * vwb
-        tpBLocal = self.states.bpr if tensorParametersB["bpe"] * vwb < self.states.bpr else tensorParametersB["bpe"] * vwb
-        self.states.b.numVgprG2LAllocated = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
-          tpB) / (float)(self.states.bpr))
-        numVgprG2LAllocatedLocal = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
-          tpBLocal) / (float)(self.states.bpr))
-      else:
-        self.states.b.numVgprG2LAllocated = self.states.b.numVgprG2L
-    # using _ds_store_b8: need one more vgpr space to do lshr
-    if tensorParametersB["localWriteInstruction"].blockWidth == 0.25:
-      self.states.b.numVgprG2L = self.states.b.numVgprG2L * 2
-      self.states.b.numVgprG2LAllocated = self.states.b.numVgprG2LAllocated + numVgprG2LAllocatedLocal
+    self.states.a.numVgprG2L, self.states.a.numVgprG2LAllocated\
+      = calculateG2LResources(kernel["DirectToLdsA"], self.do["KeepDirectToLdsAlloc"], tensorParametersA, vwa, kernel["NumLoadsCoalescedA"], kernel["NumLoadsPerpendicularA"], self.states)
+    self.states.b.numVgprG2L, self.states.b.numVgprG2LAllocated\
+      = calculateG2LResources(kernel["DirectToLdsB"], self.do["KeepDirectToLdsAlloc"], tensorParametersB, vwb, kernel["NumLoadsCoalescedB"], kernel["NumLoadsPerpendicularB"], self.states)
 
     self.states.m.numVgprG2L = 0
     if kernel["ProblemType"]["Sparse"]:
@@ -4139,7 +4129,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
   # mode: 0=prefetch, 1=unroll loop, 2=guardK
   ##############################################################################
   @abc.abstractmethod
-  def globalReadDo(self, kernel, mode, tP):
+  def globalReadDo(self, kernel, mode: GlobalReadMode, tP):
     return ""
 
   ##############################################################################
