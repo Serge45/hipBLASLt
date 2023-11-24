@@ -40,7 +40,7 @@ from .TensilePass import getActivationFunctionModuleName, getActivationBranchMod
 from .Common import globalParameters, print2, printExit, printWarning, roundUp
 from .TensileInstructions.Containers import HWRegContainer
 from .Component import Component
-from .KernelWriter import KernelWriter
+from .KernelWriter import KernelWriter, GlobalReadMode
 from .KernelWriterModules import *
 from .SolutionStructs import isPackedIndex
 from .AsmStoreState import StoreState
@@ -5844,18 +5844,18 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   # Global Read: Do It A/B
   ##############################################################################
-  def globalReadDo(self, kernel, mode, tP, unrollLoopIdx=-1):
+  def globalReadDo(self, kernel, mode: GlobalReadMode, tP, unrollLoopIdx=-1):
     tc = tP["tensorChar"]
     problemType = self.states.kernel["ProblemType"]
     imod = StructuredModule("globalReadDo%s_%u"%(tc,mode))
-    if not self.do["GlobalRead%s"%tP["tensorChar"]]: return imod
+    if not self.do["GlobalRead%s"%tc]: return imod
 
     # sizeK % LOCAL_DEPTHU
-    guardK = (mode==2)
+    guardK = (mode == GlobalReadMode.TAILLOOP)
 
     loopIdx = self.states.unrollIdx # TODO - does this handle multiple summation indices?
     if kernel["SuppressNoLoadLoop"]:
-      if mode==1 and tP["isA"]:
+      if mode == GlobalReadMode.INLOOP and tP["isA"]:
         imod.header.add(SCmpEQI32(
               src0=self.loopCounter(kernel, loopIdx), \
               src1=1, \
@@ -6050,7 +6050,7 @@ class KernelWriterAssembly(KernelWriter):
         #module.add(self.getCmpAssert(self.asmAssert.lt, vgpr("Serial"), 64)) # examine second wavefront
 
     # TODO - can remove one of these m0 restores if A and B both TLU
-    if kernel["DirectToLds%s"%tP["tensorChar"]] and not (mode == 1 and kernel["PrefetchGlobalRead"]==2):
+    if kernel["DirectToLds%s"%tP["tensorChar"]] and not (mode == GlobalReadMode.INLOOP and kernel["PrefetchGlobalRead"]==2):
       dst = mgpr(0)
       src = hex(kernel["LdsNumElements"] * tP["bpe"])
       comment = "Restore LDS clamp at %u bytes"%(kernel["LdsNumElements"] * tP["bpe"])
