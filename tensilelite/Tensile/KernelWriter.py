@@ -51,6 +51,9 @@ from typing import Dict, NamedTuple, Tuple, Type
 from math import ceil
 from enum import IntEnum
 
+def isMixedPrecision(tensorParameter: Dict) -> bool:
+  return tensorParameter["bpeGR"] < tensorParameter["bpe"]
+
 # NamedTuple is immutable
 class IntermediateTPValues(NamedTuple):
   numReadsTile: int = -1
@@ -1537,8 +1540,8 @@ class KernelWriter(metaclass=abc.ABCMeta):
       isLastLoop = not isNGLL
       if u == 0:
         if not isLastLoop:
-          self.codes.localWriteA = self.localWriteDo(kernel, tensorParametersA)  # local write in loopcnt N targets data for loopcnt N+1
-          self.codes.localWriteB = self.localWriteDo(kernel, tensorParametersB)
+          self.codes.localWriteA = self.getLocalWriteCode(kernel, tensorParametersA) # local write in loopcnt N targets data for loopcnt N+1
+          self.codes.localWriteB = self.getLocalWriteCode(kernel, tensorParametersB)
         else:
           self.codes.localWriteA = Module()
           self.codes.localWriteB = Module()
@@ -1767,8 +1770,8 @@ class KernelWriter(metaclass=abc.ABCMeta):
     self.codes.globalReadIncrements = self.globalReadIncrementAB(kernel, tensorParametersA, tensorParametersB, self.states.unrollIdx, 0)
 
     if not kernel["NoLdsWriteCode"]:
-      self.codes.localWriteA = self.localWriteDo(kernel, tensorParametersA)
-      self.codes.localWriteB = self.localWriteDo(kernel, tensorParametersB)
+      self.codes.localWriteA = self.getLocalWriteCode(kernel, tensorParametersA) # local write in loopcnt N targets data for loopcnt N+1
+      self.codes.localWriteB = self.getLocalWriteCode(kernel, tensorParametersB)
     else:
       self.codes.localWriteA = Module()
       self.codes.localWriteB = Module()
@@ -1791,10 +1794,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
       module.add(self._syncThreads(kernel, "PGR=0, prior iter done reading lds"))
       if not kernel["NoLdsWriteCode"]:
         module.addComment1("local write a")
-        tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
+        tempLWCodeModA = self.getLocalWriteCode(kernel, tensorParametersA)
         module.add(tempLWCodeModA)
         module.addComment1("local write b")
-        tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
+        tempLWCodeModB = self.getLocalWriteCode(kernel, tensorParametersB)
         module.add(tempLWCodeModB)
       module.add(self._wait(kernel, tensorParametersA, tensorParametersB, -1, 0, -1, "2prefetch wait for local write"))
       module.add(self._syncThreads(kernel))
@@ -1854,8 +1857,8 @@ class KernelWriter(metaclass=abc.ABCMeta):
       if u==0: # if at start of subloop...
         # ...update local write code
         if not kernel["NoLdsWriteCode"]:
-          self.codes.localWriteA = self.localWriteDo(kernel, tensorParametersA)  # local write in loopcnt N targets data for loopcnt N+1
-          self.codes.localWriteB = self.localWriteDo(kernel, tensorParametersB)
+          self.codes.localWriteA = self.getLocalWriteCode(kernel, tensorParametersA)  # local write in loopcnt N targets data for loopcnt N+1
+          self.codes.localWriteB = self.getLocalWriteCode(kernel, tensorParametersB)
         else:
           self.codes.localWriteA = Module()
           self.codes.localWriteB = Module()
@@ -2220,10 +2223,16 @@ class KernelWriter(metaclass=abc.ABCMeta):
     module.addComment2("Unrolled Loop(s) - Begin")
     module.add(self.openLoop(kernel, tensorParametersA, tensorParametersB, self.states.unrollIdx, beginLabelOnly=False))
 
+    from .TensileInstructions.BasicBlock import BasicBlock, unrolledLoopCvtOptimizer
+
     for lc in range(0, loopCopies):
       # loop body code generation
       finalLoop = lc == loopCopies - 1
-      module.add(self.loopBody( kernel, tensorParametersA, tensorParametersB, pack, lc, loopCopies, finalLoop ))
+      lb = self.loopBody( kernel, tensorParametersA, tensorParametersB, pack, lc, loopCopies, finalLoop)
+      bb = BasicBlock(lb)
+      bb = unrolledLoopCvtOptimizer(bb, self.states.miLatencyLeft)
+      lb = bb.toModule()
+      module.add(lb)
 
     module.addComment1("Before NLL: Check VGPR.checkin for INT8 LW")
 
@@ -2351,10 +2360,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
       if not kernel["NoLdsWriteCode"]:
         # tail: local write
         module.addComment1("local write a")
-        tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
+        tempLWCodeModA = self.getLocalWriteCode(kernel, tensorParametersA)
         module.add(tempLWCodeModA)
         module.addComment1("local write b")
-        tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
+        tempLWCodeModB = self.getLocalWriteCode(kernel, tensorParametersB)
         module.add(tempLWCodeModB)
       # change local read policy from wider local read to one unit of K at a time
       module.addComment1("Recalc local read offsets")
@@ -3312,14 +3321,14 @@ class KernelWriter(metaclass=abc.ABCMeta):
       vgprIdx += 1
 
     #F8H
-    if tensorParametersA["bpe"] != tensorParametersA["bpeGR"]:
-      self.states.a.startVgprValuCvtTemp = vgprIdx
-      vgprIdx += 2 * kernel["GlobalReadVectorWidthA"] * tensorParametersA["bpeGR"] // 4
+    # if tensorParametersA["bpe"] > tensorParametersA["bpeGR"]:
+    #   self.states.a.startVgprValuCvtTemp = vgprIdx
+    #   vgprIdx += tensorParametersA["shiftGR"] + kernel["GlobalReadVectorWidthA"] * tensorParametersA["bpeGR"] // 4
 
     #HF8
-    if tensorParametersB["bpe"] != tensorParametersB["bpeGR"]:
-      self.states.b.startVgprValuCvtTemp = vgprIdx
-      vgprIdx += 2 * kernel["GlobalReadVectorWidthB"] * tensorParametersB["bpeGR"] // 4
+    # if tensorParametersB["bpe"] > tensorParametersB["bpeGR"]:
+    #   self.states.b.startVgprValuCvtTemp = vgprIdx
+    #   vgprIdx += tensorParametersB["shiftGR"] + kernel["GlobalReadVectorWidthB"] * tensorParametersB["bpeGR"] // 4
 
     if kernel["ProblemType"]["Sparse"]:
       if kernel["DirectToVgprSparseMetadata"]:
@@ -4167,6 +4176,12 @@ class KernelWriter(metaclass=abc.ABCMeta):
   @abc.abstractmethod
   def localWriteDo(self, kernel, tP):
     return ""
+
+  def getLocalWriteCode(self, kernel, tP):
+    # if isMixedPrecision(tP) and hasattr(self, 'localWriteDoMixedPrecOptimized'):
+    #   return self.localWriteDoMixedPrecOptimized(kernel, tP)
+    # else:
+      return self.localWriteDo(kernel, tP)
 
   ##############################################################################
   # Local Read: Swap Offsets A/B

@@ -26,9 +26,7 @@ from ..TensileInstructions import Item, Module, HolderContainer, Instruction, \
                                 replaceHolder, fastdeepcopy, VMovB32
 from ..Common import roundUp
 from ..Component import SIA
-
-import copy
-from math import ceil
+from typing import List
 
 PRECISION = 100
 class SIA3(SIA):
@@ -613,7 +611,7 @@ def prepareLWInstToSched(writer, kernel, numLocalWritesPerSched):
     #################
     # create a plan #
     #################
-    itemsLWToSched = list(writer.codes.localWriteA.items()) + list(writer.codes.localWriteB.items())
+    itemsLWToSched = writer.codes.localWriteA.items() + writer.codes.localWriteB.items()
     if kernel["PrefetchGlobalRead"] == 2:
         # PrefetchGlobalRead + DirectToLds case, need to add dummy list to insert global read
         tmpList = []
@@ -637,8 +635,7 @@ def prepareLWInstToSched(writer, kernel, numLocalWritesPerSched):
         skip = kernel["PrefetchGlobalRead"] == 2 and kernel["ProblemType"]["Sparse"] and kernel["DirectToVgprSparseMetadata"] \
            and item.name.startswith("MetadataWrite") and item.countType(VMovB32)
         if not skip:
-           for j in range(PRECISION-1):
-               itemsLWToSchedTemp.append(Module())
+            itemsLWToSchedTemp += [Module()] * (PRECISION-1)
     if itemsLWToSched:
         itemsLWToSchedTemp.append(itemsLWToSched.pop(0))
         for i in range(numLocalWritesPerSched + numLocalWritesPerSched % PRECISION - len(itemsLWToSchedTemp) % numLocalWritesPerSched):
@@ -647,7 +644,7 @@ def prepareLWInstToSched(writer, kernel, numLocalWritesPerSched):
     # This counts the number of modules which contain a ds_write
     # Scheduler below keeps all writes in the same module in same iteration
     # so this is better match to what it is trying to do
-    # numWritesToSched = sum(1 for item in itemsLWToSched if item.countType(LocalWriteInstruction))
+    #numWritesToSched = sum(item.countType(LocalWriteInstruction) for item in itemsLWToSched)
     numWritesToSched = len(itemsLWToSched)
     return itemsLWToSched, numWritesToSched
 
