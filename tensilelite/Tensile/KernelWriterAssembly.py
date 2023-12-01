@@ -35,6 +35,7 @@ from .TensileInstructions import KernelBody, Label, Macro, Module, RegSet, SrdUp
                           RegisterPool, allocTmpGpr, RegisterPoolResource, Holder, \
                           vgpr, sgpr, accvgpr, mgpr, log2, ceilDivide, DataType, fastdeepcopy, \
                           dataTypeToMfmaInstTypePair, getGlcBitName, getSlcBitName, dataTypeNameAbbrevToInstType
+from .AsmMemoryInstruction import MemoryInstruction
 from .TensileInstructions.Instructions import *
 from .TensilePass import getActivationFunctionModuleName, getActivationBranchModuleName
 from .Common import globalParameters, print2, printExit, printWarning, roundUp
@@ -663,12 +664,12 @@ class KernelWriterAssembly(KernelWriter):
 
     if not kernel["DirectToLdsA"] or self.do["KeepDirectToLdsAlloc"]:
         module.add(RegSet("v", "vgprG2LA", self.states.a.startVgprG2L))
-        if self.states.a.startVgprValuCvtTemp >= 0:
-          module.add(RegSet("v", "vgprG2LACvtTmp", self.states.a.startVgprValuCvtTemp))
+        # if self.states.a.startVgprValuCvtTemp >= 0:
+        #   module.add(RegSet("v", "vgprG2LCvtTmpA", self.states.a.startVgprValuCvtTemp))
     if not kernel["DirectToLdsB"] or self.do["KeepDirectToLdsAlloc"]:
         module.add(RegSet("v", "vgprG2LB", self.states.b.startVgprG2L))
-        if self.states.b.startVgprValuCvtTemp >= 0:
-          module.add(RegSet("v", "vgprG2LBCvtTmp", self.states.b.startVgprValuCvtTemp))
+        # if self.states.b.startVgprValuCvtTemp >= 0:
+        #   module.add(RegSet("v", "vgprG2LCvtTmpB", self.states.b.startVgprValuCvtTemp))
     if kernel["ProblemType"]["Sparse"] and not kernel["DirectToVgprSparseMetadata"]:
         module.add(RegSet("v", "vgprG2LMetadata", self.states.m.startVgprG2L))
 
@@ -6388,6 +6389,130 @@ class KernelWriterAssembly(KernelWriter):
     LWDoMod.add(LWDoB)
     return imod
 
+  def localWriteDoMixedPrecOptimized(self, kernel, tP) -> Module:
+    tc = tP["tensorChar"]
+    imod = Module()
+
+    if kernel[f"DirectToLds{tc}"] or not self.do["LocalWrite"]:
+      return imod
+
+    def getNumVgprG2L(tc: str):
+      numVgprG2LMap = {
+        "A": self.states.a.numVgprG2L,
+        "B": self.states.b.numVgprG2L,
+      }
+      return numVgprG2LMap.get(tc, self.states.m.numVgprG2L)
+
+    instruction: MemoryInstruction = tP["localWriteInstruction"]
+    numBlocks = instruction.numBlocks
+    numOffsets = instruction.numOffsets
+    blockWidth = instruction.blockWidth
+    g2lIdx = 0
+    numVgprG2L = getNumVgprG2L(tc)
+    instructionCnt = 0
+
+    def localWriteVectorIter(tP):
+      for perp in range(tP["nrp"]):
+        localWriteCode = imod.add(Module("LocalWrite%u perp=%d"%(instructionCnt, perp)))
+        for para in range(tP["nrc"]):
+          if para >= 1:
+            localWriteCode = imod.add(Module("LocalWrite%u perp=%d para=%d"%(instructionCnt, perp, para)))
+          for s in range(max(tP["nwcv"],tP["nwpv"]) // tP["nwcvpi"]):
+            yield perp, para, s, localWriteCode
+
+    def calculateG2LTmpVgprOffset(isB: bool, numVgprG2L: int, blockWidth: float) -> int:
+      if isB:
+        if blockWidth == 0.25:
+          return numVgprG2L // 2
+        else:
+          return 0
+      return numVgprG2L
+
+    tmpVgprOffset = calculateG2LTmpVgprOffset(tc == "B", numVgprG2L, blockWidth)
+
+    def buildLocalWriteInputParameters(globalBlockWidth: float,
+                                       blockWidth: float,
+                                       numBlocks: int,
+                                       glvw: int,
+                                       s: int,
+                                       bpe: int,
+                                       bpeGR: int):
+      paramList = []
+      numsOfRegister = []
+      for _ in range(0, numBlocks):
+        paramList.append(vgpr(f"G2LCvtTmp{tc}", blockWidth))
+        numsOfRegister.append(blockWidth)
+      paramList.extend([offset] * numOffsets)
+      return paramList, numsOfRegister
+
+    g2lIdxDict = defaultdict(lambda: -1)
+
+    for perp, para, s, localWriteCode in localWriteVectorIter(tP):
+      sPerp, sPara = 0, 0
+      if tP["tlu"] != kernel[f"UnrollMajorLDS{tc}"]:
+        if tP["wtc"]:
+          sPerp = s
+        elif tP["wtc"]:
+          sPara = s
+      offset, lwInstIndex, comment = self.calculateLdsWriteOffset(perp, para, sPerp, sPara, kernel, tP)
+      glvw: int = tP["glvw"]
+      assert glvw > 2
+      g2lIdx: int = round(lwInstIndex * blockWidth)
+      g2lIdxDict[g2lIdx] += 1
+      instHi = g2lIdxDict[g2lIdx]
+      glInst: MemoryInstruction = tP["globalReadInstruction"]
+      paramList, _ = buildLocalWriteInputParameters(glInst.totalWidth,
+                                                    blockWidth,
+                                                    numBlocks,
+                                                    glvw,
+                                                    s,
+                                                    tP["bpe"],
+                                                    tP["bpeGR"])
+
+      isCvtHighBits = (g2lIdx % 2) == 1
+      isHigh16Bits = (s % 2 == 1) or (glvw == 1 and (instHi % 2) == 1)
+      assert isHigh16Bits is False
+      assert numBlocks == 1
+      glDataType: DataType = kernel["ProblemType"][f"DataType{tc}"]
+      lwDataType: DataType = kernel["ProblemType"]["DataType"]
+      assert glDataType.isFloat8() and lwDataType.isHalf()
+      glBlockWidth = glInst.blockWidth
+      assert glBlockWidth <= blockWidth, "e.g. gl: b32, lw: b32 or b64"
+      vgprTmp: int = self.vgprPool.checkOutAligned(2, 2)
+      cvtVgprBase: str = f"G2LCvtTmp{tc}"
+      shiftGR: int = tP["shiftGR"]
+      assert glBlockWidth >= 1, "Currently support glblockWidth >= 1 only"
+
+      cvtModule = Module(f"CvtLocalWrite")
+      numB64Moved = 0
+      for i in range(glBlockWidth // 2):
+        cvtModule.add(VMovB64(vgpr(f"{cvtVgprBase}+{shiftGR}+{i}", 2), vgpr(f"G2L{tc}+{g2lIdx}+{shiftGR}+{i}", 2)))
+        numB64Moved += 1
+
+      if glBlockWidth % 2 == 1:
+        cvtModule.add(VMovB32(vgpr(f"{cvtVgprBase}+{shiftGR}+{2*numB64Moved}"), vgpr(f"G2L{tc}+{g2lIdx}+{shiftGR}+{2*numB64Moved}")))
+
+
+      for vi in range(int(glBlockWidth)):
+        cvtModule.add(VCvtPkFP8toF32(dst=vgpr(vgprTmp, 2), src=vgpr(f"{cvtVgprBase}+{shiftGR}+{vi}"), sdwa=SDWAModifiers(src0_sel=SelectBit.WORD_0), comment="convert to F32"))
+        cvtModule.add(VCvtF32toF16(dst=vgpr(f"{cvtVgprBase}+{vi * 2}"), src=vgpr(vgprTmp), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_0), comment="Convert to FP16"))
+        cvtModule.add(VCvtF32toF16(dst=vgpr(f"{cvtVgprBase}+{vi * 2}"), src=vgpr(vgprTmp+1), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_1), comment="Convert to FP16"))
+        cvtModule.add(VCvtPkFP8toF32(dst=vgpr(vgprTmp, 2), src=vgpr(f"{cvtVgprBase}+{shiftGR}+{vi}"), sdwa=SDWAModifiers(src0_sel=SelectBit.WORD_1), comment="convert to F32"))
+        cvtModule.add(VCvtF32toF16(dst=vgpr(f"{cvtVgprBase}+{vi * 2 + 1}"), src=vgpr(vgprTmp), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_0), comment="Convert to FP16"))
+        cvtModule.add(VCvtF32toF16(dst=vgpr(f"{cvtVgprBase}+{vi * 2 + 1}"), src=vgpr(vgprTmp+1), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_1), comment="Convert to FP16"))
+
+      localWriteCode.add(cvtModule)
+
+      self.vgprPool.checkIn(vgprTmp)
+      LwInstType = instruction.getInst(isHigh16Bits)
+      ds = DSModifiers(na=1, offset=paramList[1])
+      lwa = f"LocalWriteAddr{tc}" # default
+      writeInst = LwInstType(dstAddr=vgpr(lwa), src=paramList[0], ds=ds, comment=comment)
+      localWriteCode.add(writeInst)
+      instructionCnt += 1 if LwInstType != DSStoreB256 else 2
+
+    return imod
+
   ##############################################################################
   # Local Write: Do It A/B
   ##############################################################################
@@ -6401,8 +6526,10 @@ class KernelWriterAssembly(KernelWriter):
         return self.states.a.numVgprG2L
       elif tP["isM"]:
         return self.states.m.numVgprG2L
+      # B and blockWidth == 0.25
       elif blockWidth == 0.25:
         return self.states.b.numVgprG2L // 2
+      # B and block != 0.25
       else:
         return 0
 

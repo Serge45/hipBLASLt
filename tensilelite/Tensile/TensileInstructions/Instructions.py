@@ -472,9 +472,9 @@ class ReadWriteInstruction(Instruction):
                 kStr = "short_d16_hi" if self.kernel.isa[0] < 11 else "d16_hi_b16"
         return kStr
 
-    def preStr(self):
+    def preStr(self) -> str:
         # Local read is set in DSLoad and DSStore
-        self.instStr += self.typeConvert()
+        return self.instStr + self.typeConvert()
 
     @abc.abstractmethod
     def toList(self) -> list:
@@ -509,15 +509,15 @@ class FLATReadInstruction(GlobalReadInstruction):
         return str(self.dst) + ", " + str(self.vaddr)
 
     def toList(self) -> list:
-        self.preStr()
-        l = [self.instStr, self.dst, self.vaddr]
+        instStr = self.preStr()
+        l = [instStr, self.dst, self.vaddr]
         l.extend(self.flat.toList()) if self.flat else ""
         l.append(self.comment)
         return l
 
     def __str__(self) -> str:
-        self.preStr()
-        kStr = self.instStr + " " + self.getArgStr()
+        instStr = self.preStr()
+        kStr = instStr + " " + self.getArgStr()
         kStr += str(self.flat) if self.flat else ""
         return self.formatWithComment(kStr)
 
@@ -539,15 +539,15 @@ class MUBUFReadInstruction(GlobalReadInstruction):
         return str(self.dst) + ", " + str(self.vaddr) + ", " + str(self.saddr) + ", " + str(self.soffset)
 
     def toList(self) -> list:
-        self.preStr()
-        l = [self.instStr, self.dst, self.vaddr, self.saddr, self.soffset]
+        instStr = self.preStr()
+        l = [instStr, self.dst, self.vaddr, self.saddr, self.soffset]
         l.extend(self.mubuf.toList()) if self.mubuf else ""
         l.append(self.comment)
         return l
 
     def __str__(self) -> str:
-        self.preStr()
-        kStr = self.instStr + " " + self.getArgStr()
+        instStr = self.preStr()
+        kStr = instStr + " " + self.getArgStr()
         kStr += str(self.mubuf) if self.mubuf else ""
         return self.formatWithComment(kStr)
 
@@ -567,15 +567,15 @@ class SMemLoadInstruction(GlobalReadInstruction):
         return str(self.dst) + ", " + str(self.base) + ", " + str(self.soffset)
 
     def toList(self) -> list:
-        self.preStr()
-        l = [self.instStr, self.dst, self.base, self.soffset]
+        instStr = self.preStr()
+        l = [instStr, self.dst, self.base, self.soffset]
         l.extend(self.smem.toList()) if self.smem else ""
         l.append(self.comment)
         return l
 
     def __str__(self) -> str:
-        self.preStr()
-        kStr = self.instStr + " " + self.getArgStr()
+        instStr = self.preStr()
+        kStr = instStr + " " + self.getArgStr()
         kStr += str(self.smem) if self.smem else ""
         return self.formatWithComment(kStr)
 
@@ -600,15 +600,15 @@ class SMemStoreInstruction(GlobalWriteInstruction):
         return str(self.srcData) + ", " + str(self.base) + ", " + str(self.soffset)
 
     def toList(self) -> list:
-        self.preStr()
-        l = [self.instStr, self.srcData, self.base, self.soffset]
+        instStr = self.preStr()
+        l = [instStr, self.srcData, self.base, self.soffset]
         l.extend(self.smem.toList()) if self.smem else ""
         l.append(self.comment)
         return l
 
     def __str__(self) -> str:
-        self.preStr()
-        kStr = self.instStr + " " + self.getArgStr()
+        instStr = self.preStr()
+        kStr = instStr + " " + self.getArgStr()
         kStr += str(self.smem) if self.smem else ""
         return self.formatWithComment(kStr)
 
@@ -628,15 +628,15 @@ class FLATStoreInstruction(GlobalWriteInstruction):
         return str(self.vaddr) + ", " + str(self.srcData)
 
     def toList(self) -> list:
-        self.preStr()
-        l = [self.instStr, self.vaddr, self.srcData]
+        instStr = self.preStr()
+        l = [instStr, self.vaddr, self.srcData]
         l.extend(self.flat.toList()) if self.flat else ""
         l.append(self.comment)
         return l
 
     def __str__(self) -> str:
-        self.preStr()
-        kStr = self.instStr + " " + self.getArgStr()
+        instStr = self.preStr()
+        kStr = instStr + " " + self.getArgStr()
         kStr += str(self.flat) if self.flat else ""
         return self.formatWithComment(kStr)
 
@@ -658,15 +658,15 @@ class MUBUFStoreInstruction(GlobalWriteInstruction):
         return str(self.srcData) + ", " + str(self.vaddr) + ", " + str(self.saddr) + ", " + str(self.soffset)
 
     def toList(self) -> list:
-        self.preStr()
-        l = [self.instStr, self.srcData, self.vaddr, self.saddr, self.soffset]
+        instStr = self.preStr()
+        l = [instStr, self.srcData, self.vaddr, self.saddr, self.soffset]
         l.extend(self.mubuf.toList()) if self.mubuf else ""
         l.append(self.comment)
         return l
 
     def __str__(self) -> str:
-        self.preStr()
-        kStr = self.instStr + " " + self.getArgStr()
+        instStr = self.preStr()
+        kStr = instStr + " " + self.getArgStr()
         kStr += str(self.mubuf) if self.mubuf else ""
         return self.formatWithComment(kStr)
 
@@ -690,21 +690,22 @@ class DSLoadInstruction(LocalReadInstruction):
 
     def preStr(self):
         if self.kernel.isa[0] < 11:
-            self.instStr = self.instStr.replace("load", "read")
+            return self.instStr.replace("load", "read")
+        return self.instStr
 
     def getArgStr(self) -> str:
         return str(self.dst) + ", " + str(self.srcs)
 
     def toList(self) -> list:
-        self.preStr()
-        l = [self.instStr, self.dst, self.srcs]
+        instStr = self.preStr()
+        l = [instStr, self.dst, self.srcs]
         l.extend(self.ds.toList()) if self.ds else ""
         l.append(self.comment)
         return l
 
     def __str__(self) -> str:
-        self.preStr()
-        kStr = self.instStr + " " + self.getArgStr()
+        instStr = self.preStr()
+        kStr = instStr + " " + self.getArgStr()
         kStr += str(self.ds) if self.ds else ""
         return self.formatWithComment(kStr)
 
@@ -728,7 +729,8 @@ class DSStoreInstruction(LocalWriteInstruction):
 
     def preStr(self):
         if self.kernel.isa[0] < 11:
-            self.instStr = self.instStr.replace("store", "write")
+            return self.instStr.replace("store", "write")
+        return self.instStr
 
     def getArgStr(self) -> str:
         kStr = str(self.dstAddr) + ", " + str(self.src0)
@@ -737,16 +739,16 @@ class DSStoreInstruction(LocalWriteInstruction):
         return kStr
 
     def toList(self) -> list:
-        self.preStr()
-        l = [self.instStr, self.dstAddr, self.src0]
+        instStr = self.preStr()
+        l = [instStr, self.dstAddr, self.src0]
         l.extend(self.src1) if self.src1 else ""
         l.extend(self.ds.toList()) if self.ds else ""
         l.append(self.comment)
         return l
 
     def __str__(self) -> str:
-        self.preStr()
-        kStr = self.instStr + " " + self.getArgStr()
+        instStr = self.preStr()
+        kStr = instStr + " " + self.getArgStr()
         kStr += str(self.ds) if self.ds else ""
         return self.formatWithComment(kStr)
 
@@ -911,8 +913,8 @@ class FlatAtomicCmpswapB32(FLATStoreInstruction):
         return ", ".join(map(str, [self.vaddr, self.tmp, self.srcData]))
 
     def toList(self) -> List:
-        self.preStr()
-        l = [self.instStr, self.vaddr, self.tmp, self.srcData]
+        instStr = self.preStr()
+        l = [instStr, self.vaddr, self.tmp, self.srcData]
         if self.flat: l.extend(self.flat.toList())
         l.append(self.comment)
         return l
@@ -921,8 +923,8 @@ class FlatAtomicCmpswapB32(FLATStoreInstruction):
         return ""
 
     def __str__(self) -> str:
-        self.preStr()
-        kStr = " ".join([self.instStr, self.getArgStr()])
+        instStr = self.preStr()
+        kStr = " ".join([instStr, self.getArgStr()])
         kStr += str(self.flat) if self.flat else ""
         return self.formatWithComment(kStr)
 
@@ -2463,6 +2465,11 @@ class VMovB32(CommonInstruction):
     def __init__(self, dst, src, comment="") -> None:
         super().__init__(InstType.INST_B32, dst, [src], None, None, comment)
         self.setInst("v_mov_b32")
+
+class VMovB64(CommonInstruction):
+    def __init__(self, dst, src, comment="") -> None:
+        super().__init__(InstType.INST_B64, dst, [src], None, None, comment)
+        self.setInst("v_mov_b64")
 
 # V Bfe
 class VBfeI32(CommonInstruction):
