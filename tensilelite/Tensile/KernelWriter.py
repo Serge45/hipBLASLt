@@ -774,22 +774,24 @@ class KernelWriter(metaclass=abc.ABCMeta):
               if mod:
                 items = item.flatitems()
                 #TODO: need more considerations
-                return [j for j in items if not isinstance(j, LocalWriteInstruction)], [j for j in items if isinstance(j, LocalWriteInstruction)]
+                lwIdx = next(filter(lambda x: isinstance(items[x], LocalWriteInstruction), range(len(items))), -1)
+                return items[:lwIdx], items[lwIdx:]
 
       for beg, end in zip([0] + cvtIndices, cvtIndices):
-        leftBound = next(filter(nonEmptyLocalWriteMod, reversed(range(beg, end))), beg) + 1
+        leftBound = next(filter(nonEmptyLocalWriteMod, reversed(range(beg, end))), -1) + 1
         rightBound = end
         totalSpaceToSchedule = rightBound - leftBound
         cvtInsts, localWrites = splitCvtModuleItems(writeItems[end])
+        numCvtInstsSpacePerIter = totalSpaceToSchedule // len(cvtInsts)
+
+        if numCvtInstsSpacePerIter == 0:
+          continue
+
         writeItems[rightBound] = Module()
 
         for lw in localWrites:
           writeItems[rightBound].add(lw)
 
-        numCvtInstsSpacePerIter = totalSpaceToSchedule // len(cvtInsts)
-
-        if numCvtInstsSpacePerIter == 0:
-          continue
 
         counter = 0
 
