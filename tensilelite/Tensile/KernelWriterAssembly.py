@@ -6429,6 +6429,14 @@ class KernelWriterAssembly(KernelWriter):
       return numVgprG2L
 
     tmpVgprOffset = calculateG2LTmpVgprOffset(tc == "B", numVgprG2L, blockWidth)
+    shiftGR: int = tP["shiftGR"]
+    glvw: int = tP["glvw"]
+
+    if glvw <= 2 or glvw == 16:
+      raise RuntimeError("glvw must be > 2")
+
+    numCvtVgprs: int = shiftGR + glvw * tP["bpeGR"] // 4
+    cvtVgprBase: int = self.vgprPool.checkOutAligned(2, numCvtVgprs)
 
     def buildLocalWriteInputParameters(globalBlockWidth: float,
                                        blockWidth: float,
@@ -6440,7 +6448,7 @@ class KernelWriterAssembly(KernelWriter):
       paramList = []
       numsOfRegister = []
       for _ in range(0, numBlocks):
-        paramList.append(vgpr(f"G2LCvtTmp{tc}", blockWidth))
+        paramList.append(vgpr(cvtVgprBase, blockWidth))
         numsOfRegister.append(blockWidth)
       paramList.extend([offset] * numOffsets)
       return paramList, numsOfRegister
@@ -6455,8 +6463,7 @@ class KernelWriterAssembly(KernelWriter):
         elif tP["wtc"]:
           sPara = s
       offset, lwInstIndex, comment = self.calculateLdsWriteOffset(perp, para, sPerp, sPara, kernel, tP)
-      glvw: int = tP["glvw"]
-      assert glvw > 2
+
       g2lIdx: int = round(lwInstIndex * blockWidth)
       g2lIdxDict[g2lIdx] += 1
       instHi = g2lIdxDict[g2lIdx]
@@ -6469,37 +6476,51 @@ class KernelWriterAssembly(KernelWriter):
                                                     tP["bpe"],
                                                     tP["bpeGR"])
 
-      isCvtHighBits = (g2lIdx % 2) == 1
       isHigh16Bits = (s % 2 == 1) or (glvw == 1 and (instHi % 2) == 1)
-      assert isHigh16Bits is False
-      assert numBlocks == 1
+
+      if isHigh16Bits is True:
+        self.vgprPool.checkIn(cvtVgprBase)
+        raise RuntimeError("isHigh16Bits must be False")
+      if numBlocks != 1:
+        self.vgprPool.checkIn(cvtVgprBase)
+        raise RuntimeError("numBlocks must be 1")
+
       glDataType: DataType = kernel["ProblemType"][f"DataType{tc}"]
       lwDataType: DataType = kernel["ProblemType"]["DataType"]
-      assert glDataType.isFloat8() and lwDataType.isHalf()
+
+      if not (glDataType.isFloat8() and lwDataType.isHalf()):
+        self.vgprPool.checkIn(cvtVgprBase)
+        raise RuntimeError("Support F8 -> H only")
+
       glBlockWidth = glInst.blockWidth
-      assert glBlockWidth <= blockWidth, "e.g. gl: b32, lw: b32 or b64"
+
+      if glBlockWidth > blockWidth:
+        self.vgprPool.checkIn(cvtVgprBase)
+        raise RuntimeError("e.g. gl: b32, lw: b32 or b64")
+
       vgprTmp: int = self.vgprPool.checkOutAligned(2, 2)
-      cvtVgprBase: str = f"G2LCvtTmp{tc}"
-      shiftGR: int = tP["shiftGR"]
-      assert glBlockWidth >= 1, "Currently support glblockWidth >= 1 only"
+
+      if glBlockWidth < 1:
+        self.vgprPool.checkIn(cvtVgprBase)
+        raise RuntimeError("Currently supports glblockWidth >= 1 only")
 
       cvtModule = Module(f"CvtLocalWrite")
       numB64Moved = 0
       for i in range(glBlockWidth // 2):
-        cvtModule.add(VMovB64(vgpr(f"{cvtVgprBase}+{shiftGR}+{i}", 2), vgpr(f"G2L{tc}+{g2lIdx}+{shiftGR}+{i}", 2)))
+        cvtModule.add(VMovB64(vgpr(cvtVgprBase+shiftGR+i, 2), vgpr(f"G2L{tc}+{g2lIdx}+{shiftGR}+{i}", 2)))
         numB64Moved += 1
 
       if glBlockWidth % 2 == 1:
-        cvtModule.add(VMovB32(vgpr(f"{cvtVgprBase}+{shiftGR}+{2*numB64Moved}"), vgpr(f"G2L{tc}+{g2lIdx}+{shiftGR}+{2*numB64Moved}")))
+        cvtModule.add(VMovB32(vgpr(cvtVgprBase+shiftGR+2*numB64Moved), vgpr(f"G2L{tc}+{g2lIdx}+{shiftGR}+{2*numB64Moved}")))
 
 
       for vi in range(int(glBlockWidth)):
-        cvtModule.add(VCvtPkFP8toF32(dst=vgpr(vgprTmp, 2), src=vgpr(f"{cvtVgprBase}+{shiftGR}+{vi}"), sdwa=SDWAModifiers(src0_sel=SelectBit.WORD_0), comment="convert to F32"))
-        cvtModule.add(VCvtF32toF16(dst=vgpr(f"{cvtVgprBase}+{vi * 2}"), src=vgpr(vgprTmp), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_0), comment="Convert to FP16"))
-        cvtModule.add(VCvtF32toF16(dst=vgpr(f"{cvtVgprBase}+{vi * 2}"), src=vgpr(vgprTmp+1), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_1), comment="Convert to FP16"))
-        cvtModule.add(VCvtPkFP8toF32(dst=vgpr(vgprTmp, 2), src=vgpr(f"{cvtVgprBase}+{shiftGR}+{vi}"), sdwa=SDWAModifiers(src0_sel=SelectBit.WORD_1), comment="convert to F32"))
-        cvtModule.add(VCvtF32toF16(dst=vgpr(f"{cvtVgprBase}+{vi * 2 + 1}"), src=vgpr(vgprTmp), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_0), comment="Convert to FP16"))
-        cvtModule.add(VCvtF32toF16(dst=vgpr(f"{cvtVgprBase}+{vi * 2 + 1}"), src=vgpr(vgprTmp+1), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_1), comment="Convert to FP16"))
+        cvtModule.add(VCvtPkFP8toF32(dst=vgpr(vgprTmp, 2), src=vgpr(cvtVgprBase+shiftGR+vi), sdwa=SDWAModifiers(src0_sel=SelectBit.WORD_0), comment="convert to F32"))
+        cvtModule.add(VCvtF32toF16(dst=vgpr(cvtVgprBase+vi * 2), src=vgpr(vgprTmp), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_0), comment="Convert to FP16"))
+        cvtModule.add(VCvtF32toF16(dst=vgpr(cvtVgprBase+vi * 2), src=vgpr(vgprTmp+1), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_1), comment="Convert to FP16"))
+        cvtModule.add(VCvtPkFP8toF32(dst=vgpr(vgprTmp, 2), src=vgpr(cvtVgprBase+shiftGR+vi), sdwa=SDWAModifiers(src0_sel=SelectBit.WORD_1), comment="convert to F32"))
+        cvtModule.add(VCvtF32toF16(dst=vgpr(cvtVgprBase+vi * 2 + 1), src=vgpr(vgprTmp), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_0), comment="Convert to FP16"))
+        cvtModule.add(VCvtF32toF16(dst=vgpr(cvtVgprBase+vi * 2 + 1), src=vgpr(vgprTmp+1), sdwa=SDWAModifiers(dst_sel=SelectBit.WORD_1), comment="Convert to FP16"))
 
       localWriteCode.add(cvtModule)
 
@@ -6510,7 +6531,7 @@ class KernelWriterAssembly(KernelWriter):
       writeInst = LwInstType(dstAddr=vgpr(lwa), src=paramList[0], ds=ds, comment=comment)
       localWriteCode.add(writeInst)
       instructionCnt += 1 if LwInstType != DSStoreB256 else 2
-
+    self.vgprPool.checkIn(cvtVgprBase)
     return imod
 
   ##############################################################################
