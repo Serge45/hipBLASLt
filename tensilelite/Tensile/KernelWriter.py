@@ -756,7 +756,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
       curPackIdx = 0
       packAIdx = 0
       packBIdx = 0
-      cvtIndices = [idx for idx, j in enumerate(writeItems) for i in j.items() if isinstance(i, Module) and i.findNamedItem("CvtLocalWrite")]
+      cvtIndices = [idx for idx, j in enumerate(writeItems) for i in j.items() if isinstance(i, Module) and i.findNamedItem("CvtLocalWrite") and i.findNamedItem("CvtLocalWrite").items()]
 
       def nonEmptyLocalWriteMod(idx):
         item = writeItems[idx]
@@ -4212,13 +4212,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
     return ""
 
   def getLocalWriteCode(self, kernel, tP):
-    try:
-      if isMixedPrecision(tP) and hasattr(self, 'localWriteDoMixedPrecOptimized'):
-        return self.localWriteDoMixedPrecOptimized(kernel, tP)
-      else:
-        return self.localWriteDo(kernel, tP)
-    except Exception as e:
-      return self.localWriteDo(kernel, tP)
+    return self.localWriteDo(kernel, tP)
 
   ##############################################################################
   # Local Read: Swap Offsets A/B
