@@ -1,7 +1,9 @@
 from typing import List, Type, Tuple
 from itertools import dropwhile, takewhile
 from .Code import Label, Module
-from .Instructions import MFMAInstruction, Instruction, CommonInstruction, ReadWriteInstruction, RegisterContainer, LocalWriteInstruction, GlobalReadInstruction, SWaitCnt, VMovB32, VMovB64
+from .Instructions import MFMAInstruction, Instruction, CommonInstruction, ReadWriteInstruction,\
+    RegisterContainer, LocalWriteInstruction, GlobalReadInstruction, SWaitCnt, VMovB32, VMovB64,\
+    SBarrier, SSetPrior
 
 class BasicBlock:
     def __init__(self, mod: Module):
@@ -27,14 +29,19 @@ def hasDependency(ins0: CommonInstruction, ins1: CommonInstruction):
     elif isinstance(ins1, MFMAInstruction):
         srcs = [ins1.a, ins1.b]
     elif isinstance(ins1, GlobalReadInstruction):
-        srcs = ins1.vaddr
+        srcs = [ins1.vaddr]
     elif isinstance(ins1, LocalWriteInstruction):
         srcs = [ins1.src0]
 
     if isinstance(ins0, LocalWriteInstruction):
         dst: RegisterContainer = ins0.dstAddr
-    else:
+    elif hasattr(ins0, 'dst'):
         dst: RegisterContainer = ins0.dst
+    elif isinstance(ins0, SSetPrior):
+        return False
+    else:
+        return True
+
     return any(dst == s for s in srcs)
 
 def unrolledLoopCvtOptimizer(bb: BasicBlock, miLatency: int):
@@ -102,6 +109,9 @@ def unrolledLoopCvtOptimizer(bb: BasicBlock, miLatency: int):
 
                 if doCheck:
                     if isinstance(inst, SWaitCnt) and inst.vmcnt >= 0:
+                        dstMfmaIdx, dstInstIdx = mfmaIdx, instIdx
+                        break
+                    elif isinstance(inst, SBarrier):
                         dstMfmaIdx, dstInstIdx = mfmaIdx, instIdx
                         break
                     elif isinstance(inst, (VMovB32, VMovB64)):
@@ -178,27 +188,73 @@ def unrolledLoopCvtOptimizer(bb: BasicBlock, miLatency: int):
 
         return numInstsMoved
 
-    def optimize():
+    def tryMakeMoreRoomFromTail():
+        startIndices = [i - 1 for i, mfma in enumerate(mfmas) if any(isinstance(j, SBarrier) for j in mfma.instructions)]
+        numInstsMoved = 0
+
+        for j in reversed(startIndices):
+            for i in reversed(range(1, j)):
+                mfma = mfmas[i]
+                nonfreeIdx = None
+
+                if mfma.instructions:
+                    nonfreeIdx = i
+                    break
+
+            if nonfreeIdx is None:
+                break
+
+            freeIdx = nonfreeIdx + 1
+            instsToMove = []
+
+            for inst in reversed(mfmas[nonfreeIdx].instructions):
+                if not hasDependency(inst, mfmas[freeIdx].mfma) and mfmas[freeIdx].latencyLeft > 0:
+                    instsToMove.append(inst)
+                    latency = getInstLatency(inst)
+                    mfmas[freeIdx].latencyLeft -= latency
+                    mfmas[nonfreeIdx].latencyLeft += latency
+                    numInstsMoved += 1
+                else:
+                    break
+
+            for _ in instsToMove:
+                inst = mfmas[nonfreeIdx].instructions.pop(-1)
+                mfmas[freeIdx].instructions.insert(0, inst)
+
+        return numInstsMoved
+
+    def optimize(reverse=False):
         '''
         Minimize the exceeded latency for each scheduled MFMA.
         '''
         numInstsMoved = 0
-        for i in range(1, len(mfmas) - 1):
+        begIdx, endIdx = 1, len(mfmas) - 1
+        it = range(begIdx, endIdx)
+
+        if reverse:
+            it = reversed(it)
+
+        for i in it:
             mfma = mfmas[i]
             prevMfma = mfmas[i - 1]
             nextMfma = mfmas[i + 1]
 
-            if mfma.latencyLeft < 0:
-                if prevMfma.latencyLeft > 0:
-                    instToMove = mfma.instructions.pop(0)
-                    instLatency = getInstLatency(instToMove)
-                    mfma.latencyLeft += instLatency
-                    prevMfma.instructions.append(instToMove)
-                    prevMfma.latencyLeft -= instLatency
-                    numInstsMoved += 1
-                    print(f'Optimzed: move {str(instToMove).rstrip()} from MFMA-{i} to MFMA-{i-1}')
-                    break
-                if nextMfma.latencyLeft > 0 and not hasDependency(mfma.instructions[-1], nextMfma.mfma):
+            if mfma.latencyLeft < 0 and mfma.instructions:
+                # if prevMfma.latencyLeft > 0 and not hasDependency(mfma.instructions[0], mfma.mfma):
+                #     if isinstance(mfma.instructions[0], (SBarrier,)):
+                #         continue
+
+                #     instToMove = mfma.instructions.pop(0)
+                #     instLatency = getInstLatency(instToMove)
+                #     mfma.latencyLeft += instLatency
+                #     prevMfma.instructions.append(instToMove)
+                #     prevMfma.latencyLeft -= instLatency
+                #     numInstsMoved += 1
+                #     print(f'Optimzed: move {str(instToMove).rstrip()} from MFMA-{i} to MFMA-{i-1}')
+                #     break
+                if nextMfma.latencyLeft >= 0 and not hasDependency(mfma.instructions[-1], nextMfma.mfma):
+                    if isinstance(mfma.instructions[-1], (SBarrier, SWaitCnt)):
+                        continue
                     instToMove = mfma.instructions.pop(-1)
                     instLatency = getInstLatency(instToMove)
                     mfma.latencyLeft += instLatency
@@ -206,7 +262,7 @@ def unrolledLoopCvtOptimizer(bb: BasicBlock, miLatency: int):
                     nextMfma.latencyLeft -= instLatency
                     numInstsMoved += 1
                     print(f'Optimzed: move {str(instToMove).rstrip()} from MFMA-{i} to MFMA-{i+1}')
-                    break
+                    # break
                 else:
                     print(f'Unable to optimze MFMA-{i}')
 
@@ -214,19 +270,55 @@ def unrolledLoopCvtOptimizer(bb: BasicBlock, miLatency: int):
 
     print(f'Score before global read optimization: {calculateSchedulingScore(mfmas, miLatency)}')
 
-    # while optimizeGlobalReads():
-    #     continue
+    while optimizeGlobalReads():
+        continue
 
     print(f'Score after global read optimization: {calculateSchedulingScore(mfmas, miLatency)}')
 
     prevScore = 0
     curScore = calculateSchedulingScore(mfmas, miLatency)
     numInstsMoved = 0
+    thisMoved = 0
+    # tryMakeMoreRoomFromTail()
 
-    while prevScore < curScore:
+    def getScheduleHash():
+        instructions = []
+
+        for mfma in mfmas:
+            instructions.append(mfma.mfma)
+            instructions.extend(mfma.instructions)
+
+        return hash(''.join(str(i) for i in instructions))
+
+    history = set()
+
+    while prevScore < curScore or thisMoved > 0:
         prevScore = curScore
-        numInstsMoved += optimize()
+        thisMoved = optimize(True)
+        numInstsMoved += thisMoved
         curScore = calculateSchedulingScore(mfmas, miLatency)
+        h = getScheduleHash()
+
+        if h in history:
+            print('Duplicated pattern met, break')
+            break
+        else:
+            history.add(h)
+
+    # history.clear()
+    # prevScore = 0
+    # while prevScore < curScore or thisMoved > 0:
+    #     prevScore = curScore
+    #     thisMoved = optimize(False)
+    #     numInstsMoved += thisMoved
+    #     curScore = calculateSchedulingScore(mfmas, miLatency)
+    #     h = getScheduleHash()
+
+    #     if h in history:
+    #         print('Duplicated pattern met, break')
+    #         break
+    #     else:
+    #         history.add(h)
 
     print(f'{numInstsMoved} instructions moved')
     print(f'Score after optimization: {calculateSchedulingScore(mfmas, miLatency)}')

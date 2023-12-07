@@ -758,6 +758,45 @@ class KernelWriter(metaclass=abc.ABCMeta):
       packAIdx = 0
       packBIdx = 0
       packMIdx = 0
+      cvtIndices = [idx for idx, j in enumerate(writeItems) for i in j.items() if isinstance(i, Module) and i.findNamedItem("CvtLocalWrite")]
+
+      def nonEmptyLocalWriteMod(idx):
+        item = writeItems[idx]
+
+        if isinstance(item, Module):
+          return len(item.flatitems()) > 0
+        return isinstance(item, Instruction)
+
+      def splitCvtModuleItems(item):
+        for i in filter(lambda x: isinstance(x, Module), item.items()):
+              mod = i.findNamedItem("CvtLocalWrite")
+
+              if mod:
+                items = item.flatitems()
+                #TODO: need more considerations
+                return [j for j in items if not isinstance(j, LocalWriteInstruction)], [j for j in items if isinstance(j, LocalWriteInstruction)]
+
+      for beg, end in zip([0] + cvtIndices, cvtIndices):
+        leftBound = next(filter(nonEmptyLocalWriteMod, reversed(range(beg, end))), beg) + 1
+        rightBound = end
+        totalSpaceToSchedule = rightBound - leftBound
+        cvtInsts, localWrites = splitCvtModuleItems(writeItems[end])
+        writeItems[rightBound] = Module()
+
+        for lw in localWrites:
+          writeItems[rightBound].add(lw)
+
+        numCvtInstsSpacePerIter = totalSpaceToSchedule // len(cvtInsts)
+
+        if numCvtInstsSpacePerIter == 0:
+          continue
+
+        counter = 0
+
+        while len(cvtInsts):
+          if counter % numCvtInstsSpacePerIter == 0:
+            writeItems[leftBound + counter] = cvtInsts.pop(0)
+          counter += 1
 
       #####
       # Prepare localReadCode
@@ -2229,10 +2268,14 @@ class KernelWriter(metaclass=abc.ABCMeta):
       # loop body code generation
       finalLoop = lc == loopCopies - 1
       lb = self.loopBody( kernel, tensorParametersA, tensorParametersB, pack, lc, loopCopies, finalLoop)
-      bb = BasicBlock(lb)
-      bb = unrolledLoopCvtOptimizer(bb, self.states.miLatencyLeft)
-      lb = bb.toModule()
-      module.add(lb)
+      try:
+        bb = BasicBlock(lb)
+        # bb = unrolledLoopCvtOptimizer(bb, self.states.miLatencyLeft)
+        lb = bb.toModule()
+      except Exception as e:
+        print(e)
+      finally:
+        module.add(lb)
 
     module.addComment1("Before NLL: Check VGPR.checkin for INT8 LW")
 
@@ -4178,9 +4221,12 @@ class KernelWriter(metaclass=abc.ABCMeta):
     return ""
 
   def getLocalWriteCode(self, kernel, tP):
-    # if isMixedPrecision(tP) and hasattr(self, 'localWriteDoMixedPrecOptimized'):
-    #   return self.localWriteDoMixedPrecOptimized(kernel, tP)
-    # else:
+    try:
+      if isMixedPrecision(tP) and hasattr(self, 'localWriteDoMixedPrecOptimized'):
+        return self.localWriteDoMixedPrecOptimized(kernel, tP)
+      else:
+        return self.localWriteDo(kernel, tP)
+    except Exception as e:
       return self.localWriteDo(kernel, tP)
 
   ##############################################################################
