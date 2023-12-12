@@ -6393,7 +6393,7 @@ class KernelWriterAssembly(KernelWriter):
     tc = tP["tensorChar"]
     imod = Module()
 
-    if kernel[f"DirectToLds{tc}"] or not self.do["LocalWrite"]:
+    if kernel[f"DirectToLds{tc}"] or not self.do[f"LocalWrite{tc}"]:
       return imod
 
     def getNumVgprG2L(tc: str):

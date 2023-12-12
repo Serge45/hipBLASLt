@@ -4227,7 +4227,13 @@ class KernelWriter(metaclass=abc.ABCMeta):
     return ""
 
   def getLocalWriteCode(self, kernel, tP):
-    return self.localWriteDo(kernel, tP)
+    try:
+      if isMixedPrecision(tP):
+        return self.localWriteDoMixedPrecOptimized(kernel, tP)
+      else:
+        return self.localWriteDo(kernel, tP)
+    except Exception as e:
+      return self.localWriteDo(kernel, tP)
 
   ##############################################################################
   # Local Read: Swap Offsets A/B

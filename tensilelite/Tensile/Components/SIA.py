@@ -23,7 +23,7 @@
 from ..TensileInstructions import Item, Module, HolderContainer, Instruction, \
                                 GlobalReadInstruction, LocalReadInstruction, \
                                 LocalWriteInstruction, SSetPrior, SWaitCnt, \
-                                replaceHolder, fastdeepcopy, VMovB32
+                                replaceHolder, fastdeepcopy, VMovB32, VMovB64
 from ..Common import roundUp
 from ..Component import SIA
 from typing import List
@@ -682,6 +682,7 @@ def schedLocalWrite(writer, kernel, numLocalWriteModPerIter, numLocalWritesPerSc
   firstIter, lastLc, maxVmcnt, startIterItem = None):
     # schedule here
     localwriteCnt = 0
+    prevWriteMod = None
     for u in range(startIter, localWriteEndIter+1):
         if u==(localWriteEndIter):
             itemPerIter = len(itemsLWToSched) # schedule all remaining activity
@@ -702,6 +703,7 @@ def schedLocalWrite(writer, kernel, numLocalWriteModPerIter, numLocalWritesPerSc
                 writesPerItem = item.name.startswith("MetadataWrite") and item.countType(VMovB32)
             readsToWaitAdjustForStoreC = 0
             if writesPerItem:
+                prevWriteMod = item
                 imod.addComment0("sched write - iter %u writesPerItem=%u"%(u,writesPerItem))
                 imodNGLL.addComment0("sched write - iter %u writesPerItem=%u"%(u,writesPerItem))
                 # if writesPerItem>1 this indicates multiple LocalWrites in the same module
@@ -749,7 +751,14 @@ def schedLocalWrite(writer, kernel, numLocalWriteModPerIter, numLocalWritesPerSc
                     if hasHolder:
                         for wc in wcList:
                             replaceHolder(wc, (readsToWait))
-                        imod.add(itemGR)
+
+                    if prevWriteMod and prevWriteMod.findNamedItem("CvtLocalWrite"):
+                        cvtMod: Module = prevWriteMod.findNamedItem("CvtLocalWrite")
+                        if cvtMod.countTypeList([VMovB32, VMovB64]):
+                            insertIdx = [i for i, mod in enumerate(cvtMod.items()) if not isinstance(mod, (VMovB32, VMovB64))][0]
+                            cvtMod.items().insert(insertIdx, itemGR)
+                        else:
+                            imod.add(itemGR)
                     else:
                         imod.add(itemGR)
                     readsToWait = readsToWait + readsInc # GR instruction increments vmcnt
