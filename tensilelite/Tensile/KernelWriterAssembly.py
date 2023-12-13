@@ -6436,7 +6436,7 @@ class KernelWriterAssembly(KernelWriter):
       raise RuntimeError("glvw must be > 2")
 
     numCvtVgprs: int = shiftGR + glvw * tP["bpeGR"] // 4
-    cvtVgprBase: int = self.vgprPool.checkOutAligned(2, numCvtVgprs)
+    cvtVgprBase: int = self.vgprPool.checkOutAligned(numCvtVgprs, 2)
 
     def buildLocalWriteInputParameters(globalBlockWidth: float,
                                        blockWidth: float,
