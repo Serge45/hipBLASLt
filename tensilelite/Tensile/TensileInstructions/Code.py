@@ -673,7 +673,7 @@ class _SignatureKernelDescriptor(Item):
             kStr += kdIndent + ".amdhsa_accum_offset %u // accvgpr offset\n" % self.accumOffset
         kStr += kdIndent + ".amdhsa_next_free_vgpr %u // vgprs\n" % self.totalVgprs
         kStr += kdIndent + ".amdhsa_next_free_sgpr %u // sgprs\n" % self.totalSgprs
-        kStr += kdIndent + ".amdhsa_group_segment_fixed_size %u // lds bytes\n" % self.groupSegSize
+        kStr += kdIndent + ".amdhsa_group_segment_fixed_size %u // lds bytes\n" % min(self.groupSegSize, 65536)#hack
         if self.archCaps["HasWave32"]:
             if self.kernel.wavefrontSize == 32:
                 kStr += kdIndent + ".amdhsa_wavefront_size32 1 // 32-thread wavefronts\n"
@@ -738,7 +738,7 @@ class SignatureCodeMeta(Item):
         kStr += "    .args:\n"
         for i in self.argList:
             kStr += str(i)
-        kStr += "    .group_segment_fixed_size:   %u\n" % self.groupSegSize
+        kStr += "    .group_segment_fixed_size:   %u\n" % min(self.groupSegSize, 65536)#hack
         kStr += "    .kernarg_segment_align:      %u\n" % 8
         kStr += "    .kernarg_segment_size:       %u\n" % (((self.offset+7)//8)*8) # round up to .kernarg_segment_align
         kStr += "    .max_flat_workgroup_size:    %u\n" % self.flatWgSize

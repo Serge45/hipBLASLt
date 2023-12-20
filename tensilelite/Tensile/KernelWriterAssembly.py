@@ -5938,7 +5938,9 @@ class KernelWriterAssembly(KernelWriter):
               i = sPara + (tP["nrcv"]//tP["nrcvpi"]) * (para + tP["nrc"] * (sPerp + tP["nrpv"] * perp))
               loopCnt += 1
               graIdx = i * self.states.rpgo if kernel["BufferLoad"] else i * self.states.rpga
-              g2lIdx = i * loadWidth * tP["bpeRatio"]
+              # g2lIdx = i * loadWidth * tP["bpeRatio"]
+              # hack
+              gl2Idx = 1
               # Each load may contains a small bundle of instructions, package them together in loadModule:
               loadModule = Module("load%u"%loopCnt)
               imod.middle.add(loadModule)

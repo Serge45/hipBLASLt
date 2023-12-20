@@ -365,16 +365,16 @@ class KernelWriter(metaclass=abc.ABCMeta):
     self.do["GlobalReadA"] = True
     self.do["GlobalReadB"] = True
     self.do["GlobalInc"]   = True
-    self.do["LocalWriteA"]  = True
-    self.do["LocalWriteB"]  = True
+    self.do["LocalWriteA"]  = False#True
+    self.do["LocalWriteB"]  = False#True
     self.do["LocalWriteMetadata"]  = True
-    self.do["LocalWriteCVT"]  = True
-    self.do["LocalReadA"]  = True
-    self.do["LocalReadB"]  = True
+    self.do["LocalWriteCVT"]  = False#True
+    self.do["LocalReadA"]  = False#True
+    self.do["LocalReadB"]  = False#True
     self.do["LocalReadMetadata"]  = True
     self.do["Wait"]        = True
     self.do["Sync"]        = True
-    self.do["MAC"]         = True
+    self.do["MAC"]         = False#True
     self.do["PostLoop"]    = True
     self.do["ApplyAlpha"]  = True
     self.do["GlobalWrite"] = True
@@ -3098,16 +3098,27 @@ class KernelWriter(metaclass=abc.ABCMeta):
     numVgprG2LAllocatedLocal = 0
     if not kernel["DirectToLdsA"] or self.do["KeepDirectToLdsAlloc"]:
       bpeMax = tensorParametersA["bpeDS"] if kernel["ConvertAfterDS"] else max(tensorParametersA["bpeGR"], tensorParametersA["bpe"])
-      self.states.a.numVgprG2L = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
+      # self.states.a.numVgprG2L = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
+      #   kernel["GlobalReadVectorWidthA"] * bpeMax) / (float)(self.states.bpr))
+      # numVgprG2Local = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
+      #   kernel["GlobalReadVectorWidthA"] * tensorParametersA["bpe"]) / (float)(self.states.bpr))
+      # hack
+      self.states.a.numVgprG2L = roundUp((1 * \
         kernel["GlobalReadVectorWidthA"] * bpeMax) / (float)(self.states.bpr))
-      numVgprG2Local = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
+      numVgprG2Local = roundUp((1 * \
         kernel["GlobalReadVectorWidthA"] * tensorParametersA["bpe"]) / (float)(self.states.bpr))
       if self.states.archCaps["HasEccHalf"]:
         tpA      = self.states.bpr if bpeMax * vwa < self.states.bpr else bpeMax * vwa
         tpALocal = self.states.bpr if tensorParametersA["bpe"] * vwa < self.states.bpr else tensorParametersA["bpe"] * vwa
-        self.states.a.numVgprG2LAllocated = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
+        # self.states.a.numVgprG2LAllocated = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
+        #   tpA) / (float)(self.states.bpr))
+        # hack
+        self.states.a.numVgprG2LAllocated = roundUp((1 * \
           tpA) / (float)(self.states.bpr))
-        numVgprG2LAllocatedLocal = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
+        # numVgprG2LAllocatedLocal = roundUp((kernel["NumLoadsCoalescedA"] * kernel["NumLoadsPerpendicularA"] * \
+        #   tpALocal) / (float)(self.states.bpr))
+        # hack
+        numVgprG2LAllocatedLocal = roundUp((1 * \
           tpALocal) / (float)(self.states.bpr))
       else:
         self.states.a.numVgprG2LAllocated = self.states.a.numVgprG2L
@@ -3120,17 +3131,32 @@ class KernelWriter(metaclass=abc.ABCMeta):
     numVgprG2Local = 0
     numVgprG2LAllocatedLocal = 0
     if not kernel["DirectToLdsB"] or self.do["KeepDirectToLdsAlloc"]:
+<<<<<<< HEAD
       bpeMax = tensorParametersB["bpeDS"] if kernel["ConvertAfterDS"] else max(tensorParametersB["bpeGR"], tensorParametersB["bpe"])
       self.states.b.numVgprG2L = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
+=======
+      bpeMax = max(tensorParametersB["bpeGR"], tensorParametersB["bpe"])
+      # hack
+      # self.states.b.numVgprG2L = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
+      #   kernel["GlobalReadVectorWidthB"] * bpeMax) / (float)(self.states.bpr))
+      # numVgprG2Local = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
+      #   kernel["GlobalReadVectorWidthB"] * tensorParametersB["bpe"]) / (float)(self.states.bpr))
+      self.states.b.numVgprG2L = roundUp((1 * \
+>>>>>>> 0a0ec52a (Added buffer load only hack codes)
         kernel["GlobalReadVectorWidthB"] * bpeMax) / (float)(self.states.bpr))
-      numVgprG2Local = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
+      numVgprG2Local = roundUp((1 * \
         kernel["GlobalReadVectorWidthB"] * tensorParametersB["bpe"]) / (float)(self.states.bpr))
       if self.states.archCaps["HasEccHalf"]:
         tpB      = self.states.bpr if bpeMax * vwb < self.states.bpr else bpeMax * vwb
         tpBLocal = self.states.bpr if tensorParametersB["bpe"] * vwb < self.states.bpr else tensorParametersB["bpe"] * vwb
-        self.states.b.numVgprG2LAllocated = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
+        # hack
+        # self.states.b.numVgprG2LAllocated = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
+        #   tpB) / (float)(self.states.bpr))
+        # numVgprG2LAllocatedLocal = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
+        #   tpBLocal) / (float)(self.states.bpr))
+        self.states.b.numVgprG2LAllocated = roundUp((1 * \
           tpB) / (float)(self.states.bpr))
-        numVgprG2LAllocatedLocal = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
+        numVgprG2LAllocatedLocal = roundUp((1 * \
           tpBLocal) / (float)(self.states.bpr))
       else:
         self.states.b.numVgprG2LAllocated = self.states.b.numVgprG2L

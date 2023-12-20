@@ -3353,9 +3353,10 @@ class Solution(collections.abc.Mapping):
 
     state["LdsNumBytes"] = ldsNumBytes
     ldsSize = ldsNumBytes
-    if ldsSize > globalParameters["MaxLDS"]:
-      reject(state, "Kernel Uses %u > %u bytes of LDS" % ( ldsSize, globalParameters["MaxLDS"]))
-      return
+    # hack
+    # if ldsSize > globalParameters["MaxLDS"]:
+    #   reject(state, "Kernel Uses %u > %u bytes of LDS" % ( ldsSize, globalParameters["MaxLDS"]))
+    #   return
 
     # LoopUnroll  = DepthU / LocalSplitU
     if "LocalSplitU" in state:
