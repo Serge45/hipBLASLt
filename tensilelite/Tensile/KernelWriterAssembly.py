@@ -6432,9 +6432,6 @@ class KernelWriterAssembly(KernelWriter):
     shiftGR: int = tP["shiftGR"]
     glvw: int = tP["glvw"]
 
-    if glvw <= 2 or glvw == 16:
-      raise RuntimeError("glvw must be > 2")
-
     numCvtVgprs: int = shiftGR + glvw * tP["bpeGR"] // 4
     cvtVgprBase: int = self.vgprPool.checkOutAligned(numCvtVgprs, 2)
 
@@ -6512,7 +6509,6 @@ class KernelWriterAssembly(KernelWriter):
 
       if glBlockWidth % 2 == 1:
         cvtModule.add(VMovB32(vgpr(cvtVgprBase+shiftGR+2*numB64Moved), vgpr(f"G2L{tc}+{g2lIdx}+{shiftGR}+{2*numB64Moved}")))
-
 
       for vi in range(int(glBlockWidth)):
         cvtModule.add(VCvtPkFP8toF32(dst=vgpr(vgprTmp, 2), src=vgpr(cvtVgprBase+shiftGR+vi), sdwa=SDWAModifiers(src0_sel=SelectBit.WORD_0), comment="convert to F32"))

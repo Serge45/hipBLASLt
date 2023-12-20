@@ -2291,6 +2291,23 @@ class Solution(collections.abc.Mapping):
             state["GlobalReadVectorWidthB"] = int(curGRVW)
           curGRVW *= 2
 
+    if state["ScheduleOptCvt"]:
+      if state["ScheduleIterAlg"] != 3:
+        reject(state, "ScheduleOptCvt only works for SIA3")
+
+      if state["ProblemType"]["DataTypeA"] == state["ProblemType"]["DataTypeB"]:
+        reject(state, "ScheduleOptCvt only suitable for mixed-precision problem")
+
+      #F8H
+      if state["ProblemType"]["DataTypeA"].numRegisters() < state["ProblemType"]["DataTypeB"].numRegisters():
+        if state["GlobalReadVectorWidthA"] not in (4, 8,):
+          reject(state, "ScheduleOptCvt only support glvw == 4 or 8 for mixed-tensor")
+
+      #HF8
+      if state["ProblemType"]["DataTypeB"].numRegisters() < state["ProblemType"]["DataTypeA"].numRegisters():
+        if state["GlobalReadVectorWidthB"] not in (4, 8,):
+          reject(state, "ScheduleOptCvt only support glvw == 4 or 8 for mixed-tensor")
+
     # Default GlobalStoreVectorWidth
     if state["StoreVectorWidth"] == -1:
       if state["SourceSwap"]:

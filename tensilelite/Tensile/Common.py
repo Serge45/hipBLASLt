@@ -1007,6 +1007,10 @@ validParameters = {
 
     # 4:2 Structured Sparse A Matrix, 0=Non Sparse, 1=Sparse Matrix A, 2=Sparse Matrix B
     "Sparse":                      [0, 1, 2],
+
+    # Spread conversion instructions for mixed-precision HF8 or F8H to different MFMA as sparse as possible.
+    # This is suitable for compute-bound mixed-precision kernel and only applicable to SIA3.
+    "ScheduleOptCvt":              [False, True],
     }
 
 
@@ -1096,7 +1100,8 @@ defaultBenchmarkCommonParameters = [
     {"ActivationFused":           [ True  ] },
     {"ActivationFuncCall":        [ True  ] },
     {"ActivationAlt":             [ False ] },
-    {"WorkGroupReduction":        [ False ] }
+    {"WorkGroupReduction":        [ False ] },
+    {"ScheduleOptCvt":            [ False ] }
     ]
 
 # dictionary of defaults comprised of default option for each parameter

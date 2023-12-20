@@ -392,7 +392,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
     self.do["GlobalWrite"] = True
     self.do["EdgeWrite"]   = True
     self.do["KeepDirectToLdsAlloc"] = False  # If true, keep regs used for LDS alloc even if not used
-    self.do["ScheduleOptCvt"] = True
 
     self.do["executeToInitEnd"] = 0
     self.do["executeToPrefetchEnd"] = 0
@@ -761,7 +760,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
       packMIdx = 0
       cvtIndices = []
 
-      if self.do["ScheduleOptCvt"] is True:
+      if kernel["ScheduleOptCvt"]:
         cvtIndices = [idx for idx, j in enumerate(writeItems) for i in j.items() if isinstance(i, Module) and i.findNamedItem("CvtLocalWrite") and i.findNamedItem("CvtLocalWrite").items()]
 
       def nonEmptyLocalWriteMod(idx):
@@ -4233,6 +4232,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
       else:
         return self.localWriteDo(kernel, tP)
     except Exception as e:
+      #TODO: need a way to reject ealier
       return self.localWriteDo(kernel, tP)
 
   ##############################################################################
