@@ -4227,7 +4227,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
 
   def getLocalWriteCode(self, kernel, tP):
     try:
-      if isMixedPrecision(tP):
+      if isMixedPrecision(tP) and kernel["ScheduleOptCvt"]:
         return self.localWriteDoMixedPrecOptimized(kernel, tP)
       else:
         return self.localWriteDo(kernel, tP)

@@ -6504,7 +6504,7 @@ class KernelWriterAssembly(KernelWriter):
       cvtModule = Module(f"CvtLocalWrite")
       numB64Moved = 0
       for i in range(glBlockWidth // 2):
-        cvtModule.add(VMovB64(vgpr(cvtVgprBase+shiftGR+i, 2), vgpr(f"G2L{tc}+{g2lIdx}+{shiftGR}+{i}", 2)))
+        cvtModule.add(VMovB64(vgpr(cvtVgprBase+shiftGR+2*i, 2), vgpr(f"G2L{tc}+{g2lIdx}+{shiftGR}+{2*i}", 2)))
         numB64Moved += 1
 
       if glBlockWidth % 2 == 1:
@@ -6522,11 +6522,15 @@ class KernelWriterAssembly(KernelWriter):
 
       self.vgprPool.checkIn(vgprTmp)
       LwInstType = instruction.getInst(isHigh16Bits)
-      ds = DSModifiers(na=1, offset=paramList[1])
       lwa = f"LocalWriteAddr{tc}" # default
-      writeInst = LwInstType(dstAddr=vgpr(lwa), src=paramList[0], ds=ds, comment=comment)
+      if numBlocks == 1:
+        ds = DSModifiers(na=1, offset=paramList[1])
+        writeInst = LwInstType(dstAddr=vgpr(lwa), src=paramList[0], ds=ds, comment=comment)
+      else:
+        ds = DSModifiers(na=2, offset0=paramList[2], offset1=paramList[3], ds=ds, comment=comment)
+        writeInst = LwInstType(dstAddr=vgpr(lwa), src0=paramList[0], src1=paramList[1], ds=ds, comment=comment)
       localWriteCode.add(writeInst)
-      instructionCnt += 1 if LwInstType != DSStoreB256 else 2
+      instructionCnt += 1 if blockWidth < 8 else 2
     self.vgprPool.checkIn(cvtVgprBase)
     return imod
 

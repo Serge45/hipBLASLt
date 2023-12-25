@@ -2300,13 +2300,13 @@ class Solution(collections.abc.Mapping):
 
       #F8H
       if state["ProblemType"]["DataTypeA"].numRegisters() < state["ProblemType"]["DataTypeB"].numRegisters():
-        if state["GlobalReadVectorWidthA"] not in (4, 8,):
-          reject(state, "ScheduleOptCvt only support glvw == 4 or 8 for mixed-tensor")
+        if state["GlobalReadVectorWidthA"] not in (4, 8, 16):
+          reject(state, "ScheduleOptCvt only support glvw == 4, 8 or 16 for mixed-tensor")
 
       #HF8
       if state["ProblemType"]["DataTypeB"].numRegisters() < state["ProblemType"]["DataTypeA"].numRegisters():
-        if state["GlobalReadVectorWidthB"] not in (4, 8,):
-          reject(state, "ScheduleOptCvt only support glvw == 4 or 8 for mixed-tensor")
+        if state["GlobalReadVectorWidthB"] not in (4, 8, 16):
+          reject(state, "ScheduleOptCvt only support glvw == 4, 8 or 16 for mixed-tensor")
 
     # Default GlobalStoreVectorWidth
     if state["StoreVectorWidth"] == -1:
