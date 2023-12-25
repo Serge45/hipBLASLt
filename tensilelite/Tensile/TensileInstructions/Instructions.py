@@ -1063,7 +1063,10 @@ class DSStoreB256(DSStoreInstruction):
         src = fastdeepcopy(self.src0)
         regNum = src.regNum // 2
         if upper:
-            src.regName.offsets[-1] += regNum
+            if src.regName:
+                src.regName.offsets[-1] += regNum
+            else:
+                src.regIdx += regNum
         src.regNum = regNum
         kStr = str(self.dstAddr) + ", " + str(src)
         return kStr
