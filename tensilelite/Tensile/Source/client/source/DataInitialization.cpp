@@ -1849,10 +1849,10 @@ namespace Tensile
             return result;
         }
 
-        int32_t getRotatingSize(ContractionProblemGemm const& problem,
+        uint64_t getRotatingSize(ContractionProblemGemm const& problem,
                                 ContractionInputs const&      inputs)
         {
-            int32_t rotatingSize = 0;
+            uint64_t rotatingSize = 0;
             if(inputs.a != nullptr)
             {
                 rotatingSize
@@ -1970,11 +1970,13 @@ namespace Tensile
             if(auto gemmProblem = dynamic_cast<ContractionProblemGemm const*>(problem))
             {
                 auto    castInputs   = static_pointer_cast<ContractionInputs>(inputs);
-                int32_t rotatingSize = getRotatingSize(*gemmProblem, *castInputs);
+                uint64_t rotatingSize = getRotatingSize(*gemmProblem, *castInputs);
                 int32_t rotatingNum
                     = min(maxRotatingBufferNum, ceil((float)m_rotatingBuffer / rotatingSize))
                       - 1; // Minus the original buffer.
-                int32_t totalRotatingSizeNeeded = rotatingNum * rotatingSize;
+
+                rotatingNum = max(rotatingNum, 0);
+                uint64_t totalRotatingSizeNeeded = rotatingNum * rotatingSize;
                 if(totalRotatingSizeNeeded > m_rotatingAllocatedSize)
                 {
                     throw std::runtime_error("Insufficient rotating buffer size.");
@@ -1994,7 +1996,7 @@ namespace Tensile
                     = dynamic_cast<ContractionProblemGroupedGemm const*>(problem))
             {
                 auto    castInputs   = static_pointer_cast<ContractionGroupedInputs>(inputs);
-                int32_t rotatingSize = 0;
+                uint64_t rotatingSize = 0;
                 for(size_t i = 0; i < castInputs->grouped.size(); i++)
                 {
                     rotatingSize
@@ -2003,7 +2005,7 @@ namespace Tensile
                 int32_t rotatingNum
                     = min(maxRotatingBufferNum, ceil((float)m_rotatingBuffer / rotatingSize))
                       - 1; // Minus the original buffer.
-                int32_t totalRotatingSizeNeeded = rotatingNum * rotatingSize;
+                uint64_t totalRotatingSizeNeeded = rotatingNum * rotatingSize;
                 if(totalRotatingSizeNeeded > m_rotatingAllocatedSize)
                 {
                     throw std::runtime_error("Insufficient rotating buffer size.");

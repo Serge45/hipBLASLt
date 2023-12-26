@@ -3135,18 +3135,13 @@ class KernelWriter(metaclass=abc.ABCMeta):
     numVgprG2Local = 0
     numVgprG2LAllocatedLocal = 0
     if not kernel["DirectToLdsB"] or self.do["KeepDirectToLdsAlloc"]:
-<<<<<<< HEAD
       bpeMax = tensorParametersB["bpeDS"] if kernel["ConvertAfterDS"] else max(tensorParametersB["bpeGR"], tensorParametersB["bpe"])
-      self.states.b.numVgprG2L = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
-=======
-      bpeMax = max(tensorParametersB["bpeGR"], tensorParametersB["bpe"])
       # hack
       # self.states.b.numVgprG2L = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
       #   kernel["GlobalReadVectorWidthB"] * bpeMax) / (float)(self.states.bpr))
       # numVgprG2Local = roundUp((kernel["NumLoadsCoalescedB"] * kernel["NumLoadsPerpendicularB"] * \
       #   kernel["GlobalReadVectorWidthB"] * tensorParametersB["bpe"]) / (float)(self.states.bpr))
       self.states.b.numVgprG2L = roundUp((1 * \
->>>>>>> 0a0ec52a (Added buffer load only hack codes)
         kernel["GlobalReadVectorWidthB"] * bpeMax) / (float)(self.states.bpr))
       numVgprG2Local = roundUp((1 * \
         kernel["GlobalReadVectorWidthB"] * tensorParametersB["bpe"]) / (float)(self.states.bpr))
