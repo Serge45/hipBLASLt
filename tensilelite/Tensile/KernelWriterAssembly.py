@@ -5495,7 +5495,9 @@ class KernelWriterAssembly(KernelWriter):
               i = sPara + (tP["nrcv"] // tP["nrcvpi"]) * (para + tP["nrc"] * (sPerp + tP["nrpv"] * perp))
               loopCnt += 1
               graIdx = i * self.states.rpgo if kernel["BufferLoad"] else i * self.states.rpga
-              g2lIdx = i * loadWidth * tP["bpeRatio"]
+              #g2lIdx = i * loadWidth * tP["bpeRatio"]
+              #hack
+              g2lIdx = 0
 
               destVgprHi = None
               dataIsByte = False
@@ -5940,7 +5942,7 @@ class KernelWriterAssembly(KernelWriter):
               graIdx = i * self.states.rpgo if kernel["BufferLoad"] else i * self.states.rpga
               # g2lIdx = i * loadWidth * tP["bpeRatio"]
               # hack
-              gl2Idx = 1
+              g2lIdx = 0
               # Each load may contains a small bundle of instructions, package them together in loadModule:
               loadModule = Module("load%u"%loopCnt)
               imod.middle.add(loadModule)
@@ -6414,8 +6416,8 @@ class KernelWriterAssembly(KernelWriter):
     imod = Module()
 
     LWDoMod = imod.add(Module())
-    LWDoA = self.localWriteDo(kernel, tPA) if self.do["LocalWrite%s"%tPA["tensorChar"]] else Module()
-    LWDoB = self.localWriteDo(kernel, tPB) if self.do["LocalWrite%s"%tPB["tensorChar"]] else Module()
+    LWDoA = Module()#self.localWriteDo(kernel, tPA) if self.do["LocalWrite%s"%tPA["tensorChar"]] else Module()
+    LWDoB = Module()#self.localWriteDo(kernel, tPB) if self.do["LocalWrite%s"%tPB["tensorChar"]] else Module()
     LWDoMod.addComment1("local write a")
     LWDoMod.add(LWDoA)
     LWDoMod.addComment1("local write b")

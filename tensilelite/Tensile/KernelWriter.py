@@ -365,8 +365,8 @@ class KernelWriter(metaclass=abc.ABCMeta):
     self.do["GlobalReadA"] = True
     self.do["GlobalReadB"] = True
     self.do["GlobalInc"]   = True
-    self.do["LocalWriteA"]  = False#True
-    self.do["LocalWriteB"]  = False#True
+    self.do["LocalWriteA"]  = True
+    self.do["LocalWriteB"]  = True
     self.do["LocalWriteMetadata"]  = True
     self.do["LocalWriteCVT"]  = False#True
     self.do["LocalReadA"]  = False#True
@@ -1074,13 +1074,17 @@ class KernelWriter(metaclass=abc.ABCMeta):
             # in case there are localWrite and globalread in same iteration
             # we need to make sure globalRead before localWrite
             if writeItems and not globalReadCode.countType(GlobalReadInstruction):
-              writeItem = writeItems.pop(0)
-              iterCode.add(writeItem)
+              writeItem: Module = writeItems.pop(0)
               # if there is localWrite at first mfma, need to skip it in waitcnt.
               if i == 0:
                 skipLocalWriteWaitcnt += writeItem.countType(LocalWriteInstruction) + writeItem.countType(DSStoreB256)
               if not localReadItemsThisLoop:
                 self.states.perIterLocalWriteCanSkip[iteration] += writeItem.countType(LocalWriteInstruction) + writeItem.countType(DSStoreB256)
+
+              # hack to keep waitcnt but no ds_write
+              if writeItem.countType(LocalWriteInstruction):
+                writeItem.itemList = [i for i in writeItem.itemList if not i.countType(LocalWriteInstruction)]
+              iterCode.add(writeItem)
         if mfmaIndex == self.states.lwEndMfmaIndex:
           while writeItems:
             writeItem = writeItems.pop(0)
@@ -1585,8 +1589,8 @@ class KernelWriter(metaclass=abc.ABCMeta):
       isLastLoop = not isNGLL
       if u == 0:
         if not isLastLoop:
-          self.codes.localWriteA = self.localWriteDo(kernel, tensorParametersA)  # local write in loopcnt N targets data for loopcnt N+1
-          self.codes.localWriteB = self.localWriteDo(kernel, tensorParametersB)
+          self.codes.localWriteA = Module()#self.localWriteDo(kernel, tensorParametersA)  # local write in loopcnt N targets data for loopcnt N+1
+          self.codes.localWriteB = Module()#self.localWriteDo(kernel, tensorParametersB)
         else:
           self.codes.localWriteA = Module()
           self.codes.localWriteB = Module()
@@ -1841,10 +1845,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
       module.add(self._syncThreads(kernel, "PGR=0, prior iter done reading lds"))
       if not kernel["NoLdsWriteCode"]:
         module.addComment1("local write a")
-        tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
+        tempLWCodeModA = Module()#self.localWriteDo(kernel, tensorParametersA)
         module.add(tempLWCodeModA)
         module.addComment1("local write b")
-        tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
+        tempLWCodeModB = Module()#self.localWriteDo(kernel, tensorParametersB)
         module.add(tempLWCodeModB)
       module.add(self._wait(kernel, tensorParametersA, tensorParametersB, -1, 0, -1, "2prefetch wait for local write"))
       module.add(self._syncThreads(kernel))
@@ -2333,10 +2337,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
       if not kernel["NoLdsWriteCode"]:
         # tail: local write
         module.addComment1("local write a")
-        tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
+        tempLWCodeModA = Module()#self.localWriteDo(kernel, tensorParametersA)
         module.add(tempLWCodeModA)
         module.addComment1("local write b")
-        tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
+        tempLWCodeModB = Module()#self.localWriteDo(kernel, tensorParametersB)
         module.add(tempLWCodeModB)
       # change local read policy from wider local read to one unit of K at a time
       module.addComment1("Recalc local read offsets")

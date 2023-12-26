@@ -349,7 +349,7 @@ validMacroTileSides = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 6, 12, 24, 4
 validMacroTiles = []
 validISA = [(0,0,0)]
 validISA.extend(globalParameters["SupportedISA"])
-depthUs = list(range(2,1024+1,1))
+depthUs = list(range(2,4096+1,1))
 for i in validMacroTileSides:
   for j in validMacroTileSides:
     validMacroTiles.append([i, j])
@@ -731,7 +731,7 @@ validParameters = {
     # StaggerUStride will be internally increased so it is an integer multiple of DepthU*BpeAB.
     # (the implementation requires this - the unroll iteration accesses data in steps of
     # DepthU*BPE
-    "StaggerUStride":               [16,32,64,128,256,512,1024,2048],
+    "StaggerUStride":               [16,32,64,128,256,512,1024,2048,4096,8192],
 
     # How the tile assignment (wg0, wg1, wg2) controls the initial StaggerU offset:
     # 0: Use wg0
