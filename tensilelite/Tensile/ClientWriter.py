@@ -610,6 +610,7 @@ def writeClientConfigIni(problemSizes, biasTypeArgs, biasDimArgs, activationArgs
         param("use-gpu-timer",            globalParameters["KernelTime"])
         param("hardware-monitor",         globalParameters["HardwareMonitor"])
         param("num-warmups",              globalParameters["NumWarmups"])
+        param("warmup-time-ms",           globalParameters["WarmupTimeMs"])
         param("min-flops-per-sync",       globalParameters["MinFlopsPerSync"])
         param("sleep-percent",            globalParameters["SleepPercent"])
         param("perf-l2-read-hits",        globalParameters["PerfModelL2ReadHits"])

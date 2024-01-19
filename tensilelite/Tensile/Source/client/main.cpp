@@ -167,6 +167,7 @@ namespace Tensile
                 ("platform-idx",             po::value<int>()->default_value(0), "OpenCL Platform Index")
 
                 ("num-warmups",              po::value<int>()->default_value(0), "Number of warmups to run")
+                ("warmup-time-ms",           po::value<int>()->default_value(0), "Warmup time in ms")
                 ("sync-after-warmups",       po::value<bool>()->default_value(true), "Synchronize GPU after warmup kernel runs")
                 ("num-benchmarks",           po::value<int>()->default_value(1), "Number of benchmarks to run")
                 ("num-enqueues-per-sync",    po::value<int>()->default_value(1), "Enqueues per sync, will affect by min-flops-per-sync")
@@ -466,6 +467,24 @@ namespace Tensile
             return args;
         }
 
+        namespace
+        {
+            using KernelInvocations = std::vector<KernelInvocation>;
+            std::size_t estimateNumWarmups(hip::SolutionAdapter&    adaptor,
+                                           const KernelInvocations& invocations,
+                                           std::size_t              warmupTimeMs,
+                                           hipStream_t              stream)
+            {
+                TimingEvents start(1, invocations.size());
+                TimingEvents stop(1, invocations.size());
+                HIP_CHECK_EXC(adaptor.launchKernels(invocations, stream, start[0], stop[0]));
+                HIP_CHECK_EXC(hipStreamSynchronize(stream));
+                float dur{};
+                HIP_CHECK_EXC(hipEventElapsedTime(&dur, start[0].front(), stop[0].back()));
+                return std::ceil(warmupTimeMs / dur);
+            }
+        }
+
     } // namespace Client
 } // namespace Tensile
 
@@ -649,8 +668,14 @@ int main(int argc, const char* argv[])
                                 kernels.push_back(kernel);
                             }
 
-                            size_t       warmupInvocations = listeners.numWarmupRuns();
-                            size_t       eventCount        = gpuTimer ? kernels[0].size() : 0;
+                            size_t warmupTimeMs = args["warmup-time-ms"].as<int>();
+                            size_t estimatedNumWarmups
+                                = warmupTimeMs ? estimateNumWarmups(
+                                      adapter, kernels[0], warmupTimeMs, stream)
+                                               : 0;
+                            size_t warmupInvocations
+                                = max(listeners.numWarmupRuns(), estimatedNumWarmups);
+                            size_t       eventCount = gpuTimer ? kernels[0].size() : 0;
                             TimingEvents warmupStartEvents(warmupInvocations, eventCount);
                             TimingEvents warmupStopEvents(warmupInvocations, eventCount);
 
