@@ -964,6 +964,10 @@ validParameters = {
     "NonTemporalMetadata":        list(range(0,8)),
     "NonTemporal":                list(range(-1,8)),
 
+    # Control the global read order, AB: read A and then B, BA: read B and then A. BA option slighty improves peroformance for skinny B problem. Default
+    # is AB.
+    "GlobalReadOrder":            ["AB", "BA"],
+
     # Group together unroll iterations inside the unroll loop.
     # For example, InnerUnroll=2 will fetch LDS for two unroll iterations
     "InnerUnroll":                [1,2,4,8,16,32,64],
@@ -1093,6 +1097,7 @@ defaultBenchmarkCommonParameters = [
     {"NonTemporalB":              [ 0 ] },
     {"NonTemporalMetadata":       [ 0 ] },
     {"NonTemporal":               [ -1 ] },
+    {"GlobalReadOrder":           [ "AB" ]},
     {"PreloadKernArgs":           [ True ] },
     {"CustomKernelName":          [ "" ] },
     {"NoReject":                  [ False ]},

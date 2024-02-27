@@ -1489,12 +1489,22 @@ class KernelWriter(metaclass=abc.ABCMeta):
       pfi = 1
       module.addComment1("prefetch: global -> local")
       module.add(self.openSumAtLeastUnroll(kernel, prefetch=True, isOptNLL=isOptNLL))
-      moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParametersA, usePlaceHolder=False)
-      module.add(replaceHolder(moduleTmp, 0))
-      module.add(self.globalReadDo(kernel, 0, tensorParametersA))
-      moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParametersB, usePlaceHolder=False)
-      module.add(replaceHolder(moduleTmp, 0))
-      module.add(self.globalReadDo(kernel, 0, tensorParametersB))
+
+      if kernel["GlobalReadOrder"] == "AB":
+        moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParametersA, usePlaceHolder=False)
+        module.add(replaceHolder(moduleTmp, 0))
+        module.add(self.globalReadDo(kernel, 0, tensorParametersA))
+        moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParametersB, usePlaceHolder=False)
+        module.add(replaceHolder(moduleTmp, 0))
+        module.add(self.globalReadDo(kernel, 0, tensorParametersB))
+      else:
+        moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParametersB, usePlaceHolder=False)
+        module.add(replaceHolder(moduleTmp, 0))
+        module.add(self.globalReadDo(kernel, 0, tensorParametersB))
+        moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParametersA, usePlaceHolder=False)
+        module.add(replaceHolder(moduleTmp, 0))
+        module.add(self.globalReadDo(kernel, 0, tensorParametersA))
+
       module.add(self.globalReadIncrementAB(kernel, tensorParametersA, tensorParametersB, self.states.unrollIdx, pfi))
 
     module.addComment2("End setupNewTile")
@@ -1771,12 +1781,20 @@ class KernelWriter(metaclass=abc.ABCMeta):
       module.add(self._wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "5wait for global read"))
       module.add(self._syncThreads(kernel, "PGR=0, prior iter done reading lds"))
       if not kernel["NoLdsWriteCode"]:
-        module.addComment1("local write a")
-        tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
-        module.add(tempLWCodeModA)
-        module.addComment1("local write b")
-        tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
-        module.add(tempLWCodeModB)
+        if kernel["GlobalReadOrder"] == "AB":
+          module.addComment1("local write a")
+          tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
+          module.add(tempLWCodeModA)
+          module.addComment1("local write b")
+          tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
+          module.add(tempLWCodeModB)
+        else:
+          module.addComment1("local write b")
+          tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
+          module.add(tempLWCodeModB)
+          module.addComment1("local write a")
+          tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
+          module.add(tempLWCodeModA)
       module.add(self._wait(kernel, tensorParametersA, tensorParametersB, -1, 0, -1, "2prefetch wait for local write"))
       module.add(self._syncThreads(kernel))
       # debug Local state
@@ -2142,10 +2160,17 @@ class KernelWriter(metaclass=abc.ABCMeta):
 
       if kernel["PrefetchGlobalRead"] == 2:
         module.add(self.openPrefetchGlobalRead2(kernel))
-        module.add(self.directToLdsM0Update(kernel, 1, tensorParametersA))
-        module.add(self.globalReadDo(kernel, 0, tensorParametersA))
-        module.add(self.directToLdsM0Update(kernel, 1, tensorParametersB))
-        module.add(self.globalReadDo(kernel, 0, tensorParametersB))
+
+        if kernel["GlobalReadOrder"] == "AB":
+          module.add(self.directToLdsM0Update(kernel, 1, tensorParametersA))
+          module.add(self.globalReadDo(kernel, 0, tensorParametersA))
+          module.add(self.directToLdsM0Update(kernel, 1, tensorParametersB))
+          module.add(self.globalReadDo(kernel, 0, tensorParametersB))
+        else:
+          module.add(self.directToLdsM0Update(kernel, 1, tensorParametersB))
+          module.add(self.globalReadDo(kernel, 0, tensorParametersB))
+          module.add(self.directToLdsM0Update(kernel, 1, tensorParametersA))
+          module.add(self.globalReadDo(kernel, 0, tensorParametersA))
 
         # swap local ptrs again if DirectToLds is enabled
         if kernel["DirectToLdsA"]:
@@ -2315,15 +2340,28 @@ class KernelWriter(metaclass=abc.ABCMeta):
         module.add(self.removeStagger(kernel, tensorParametersB))
 
       module.addComment1("Update M0 for DTLDS")
-      moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParametersA)
-      module.add(replaceHolder(moduleTmp, 0))
-      module.addComment1("global read A")
-      module.add(self.globalReadDo(kernel, 2, tensorParametersA))
-      module.addComment1("Update M0 for DTLDS")
-      moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParametersB)
-      module.add(replaceHolder(moduleTmp, 0))
-      module.addComment1("global read B")
-      module.add(self.globalReadDo(kernel, 2, tensorParametersB))
+
+      if kernel["GlobalReadOrder"] == "AB":
+        moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParametersA)
+        module.add(replaceHolder(moduleTmp, 0))
+        module.addComment1("global read A")
+        module.add(self.globalReadDo(kernel, 2, tensorParametersA))
+        module.addComment1("Update M0 for DTLDS")
+        moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParametersB)
+        module.add(replaceHolder(moduleTmp, 0))
+        module.addComment1("global read B")
+        module.add(self.globalReadDo(kernel, 2, tensorParametersB))
+      else:
+        moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParametersB)
+        module.add(replaceHolder(moduleTmp, 0))
+        module.addComment1("global read B")
+        module.add(self.globalReadDo(kernel, 2, tensorParametersB))
+        module.addComment1("Update M0 for DTLDS")
+        moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParametersA)
+        module.add(replaceHolder(moduleTmp, 0))
+        module.addComment1("global read A")
+        module.add(self.globalReadDo(kernel, 2, tensorParametersA))
+
       module.add(self._wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "2wait for global read"))
       module.add(self._syncThreads(kernel))
 
@@ -2336,12 +2374,20 @@ class KernelWriter(metaclass=abc.ABCMeta):
       self.oriLwaM = None
       if not kernel["NoLdsWriteCode"]:
         # tail: local write
-        module.addComment1("local write a")
-        tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
-        module.add(tempLWCodeModA)
-        module.addComment1("local write b")
-        tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
-        module.add(tempLWCodeModB)
+        if kernel["GlobalReadOrder"] == "AB":
+          module.addComment1("local write a")
+          tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
+          module.add(tempLWCodeModA)
+          module.addComment1("local write b")
+          tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
+          module.add(tempLWCodeModB)
+        else:
+          module.addComment1("local write b")
+          tempLWCodeModB = self.localWriteDo(kernel, tensorParametersB)
+          module.add(tempLWCodeModB)
+          module.addComment1("local write a")
+          tempLWCodeModA = self.localWriteDo(kernel, tensorParametersA)
+          module.add(tempLWCodeModA)
       # change local read policy from wider local read to one unit of K at a time
       module.addComment1("Recalc local read offsets")
       module.add(self.recalcLocalReadAddressesAB(kernel, tensorParametersA, tensorParametersB))

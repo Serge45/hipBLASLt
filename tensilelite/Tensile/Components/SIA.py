@@ -419,10 +419,16 @@ def fixLocalWriteEndMfmaIndex(writer, kernel, tPA, tPB, globalReadIncACode, glob
 
 def noSchedGlobalRead(writer, kernel, globalReadIncACode, globalReadIncBCode):
     # put everything in the header:
-    writer.codes.unrollLoopHeader.add(writer.codes.dtlsM0UpdateA)
-    writer.codes.unrollLoopHeader.add(writer.codes.globalReadA)
-    writer.codes.unrollLoopHeader.add(writer.codes.dtlsM0UpdateB)
-    writer.codes.unrollLoopHeader.add(writer.codes.globalReadB)
+    if kernel["GlobalReadOrder"] == "AB":
+        writer.codes.unrollLoopHeader.add(writer.codes.dtlsM0UpdateA)
+        writer.codes.unrollLoopHeader.add(writer.codes.globalReadA)
+        writer.codes.unrollLoopHeader.add(writer.codes.dtlsM0UpdateB)
+        writer.codes.unrollLoopHeader.add(writer.codes.globalReadB)
+    else:
+        writer.codes.unrollLoopHeader.add(writer.codes.dtlsM0UpdateB)
+        writer.codes.unrollLoopHeader.add(writer.codes.globalReadB)
+        writer.codes.unrollLoopHeader.add(writer.codes.dtlsM0UpdateA)
+        writer.codes.unrollLoopHeader.add(writer.codes.globalReadA)
     writer.codes.unrollLoopHeader.add(globalReadIncACode)
     writer.codes.unrollLoopHeader.add(globalReadIncBCode)
     # Dummy
@@ -438,11 +444,20 @@ def prepareGRInstToSched(writer, kernel):
     # when using PGR2, put global read instruction right after corresponding localWrite instruction
     if kernel["PrefetchGlobalRead"] == 2:
         itemsGRToSched =  []
-        itemsGRToSchedLater = list(writer.codes.globalReadA.middle.items()) + \
-                         list(writer.codes.globalReadB.middle.items())
+        if kernel["GlobalReadOrder"] == "AB":
+            itemsGRToSchedLater = list(writer.codes.globalReadA.middle.items()) + \
+                            list(writer.codes.globalReadB.middle.items())
+        else:
+            itemsGRToSchedLater = list(writer.codes.globalReadB.middle.items()) + \
+                            list(writer.codes.globalReadA.middle.items())
     else:
-        itemsGRToSched =  list(writer.codes.globalReadA.middle.items()) + \
-                        list(writer.codes.globalReadB.middle.items())
+        if kernel["GlobalReadOrder"] == "AB":
+            itemsGRToSched =  list(writer.codes.globalReadA.middle.items()) + \
+                            list(writer.codes.globalReadB.middle.items())
+        else:
+            itemsGRToSched =  list(writer.codes.globalReadB.middle.items()) + \
+                            list(writer.codes.globalReadA.middle.items())
+
         itemsGRToSchedLater = []
 
     itemsGRToSchedTemp = []
@@ -604,16 +619,27 @@ def noSchedLocalWrite(writer, kernel, tensorParametersA, tensorParametersB, loca
         imod.add(
             writer._wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, \
             "1wait for global read"))
-        imod.addComment1("local write A")
-        imod.add(writer.codes.localWriteA)
-        imod.addComment1("local write B")
-        imod.add(writer.codes.localWriteB)
+
+        if kernel["GlobalReadOrder"] == "AB":
+            imod.addComment1("local write A")
+            imod.add(writer.codes.localWriteA)
+            imod.addComment1("local write B")
+            imod.add(writer.codes.localWriteB)
+        else:
+            imod.addComment1("local write B")
+            imod.add(writer.codes.localWriteB)
+            imod.addComment1("local write A")
+            imod.add(writer.codes.localWriteA)
 
 def prepareLWInstToSched(writer, kernel, numLocalWritesPerSched):
     #################
     # create a plan #
     #################
-    itemsLWToSched = list(writer.codes.localWriteA.items()) + list(writer.codes.localWriteB.items())
+    if kernel["GlobalReadOrder"] == "AB":
+        itemsLWToSched = list(writer.codes.localWriteA.items()) + list(writer.codes.localWriteB.items())
+    else:
+        itemsLWToSched = list(writer.codes.localWriteB.items()) + list(writer.codes.localWriteA.items())
+
     if kernel["PrefetchGlobalRead"] == 2:
         # PrefetchGlobalRead + DirectToLds case, need to add dummy list to insert global read
         tmpList = []
