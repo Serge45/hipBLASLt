@@ -470,19 +470,117 @@ namespace Tensile
         namespace
         {
             using KernelInvocations = std::vector<KernelInvocation>;
-            std::size_t estimateNumWarmups(hip::SolutionAdapter&    adaptor,
-                                           const KernelInvocations& invocations,
-                                           std::size_t              warmupTimeMs,
-                                           hipStream_t              stream)
+            class WarmupRunner
             {
-                TimingEvents start(1, invocations.size());
-                TimingEvents stop(1, invocations.size());
-                HIP_CHECK_EXC(adaptor.launchKernels(invocations, stream, start[0], stop[0]));
-                HIP_CHECK_EXC(hipStreamSynchronize(stream));
-                float dur{};
-                HIP_CHECK_EXC(hipEventElapsedTime(&dur, start[0].front(), stop[0].back()));
-                return std::ceil(warmupTimeMs / dur);
-            }
+            public:
+                virtual void run(hip::SolutionAdapter &adapter, hipStream_t stream, std::function<void()> preWarmupCallback = [](){}, std::function<void()> postWarmupCallback = [](){}, std::function<void()> validator = [](){}) const = 0;
+                virtual ~WarmupRunner() = default;
+            };
+
+            class CounterBasedWarmupRunner : public WarmupRunner
+            {
+            public:
+                CounterBasedWarmupRunner(const std::vector<KernelInvocations> &invocationsArr,
+                                         std::size_t warmupInvocations,
+                                         bool useGpuTimer,
+                                         TimingEvents &starts,
+                                         TimingEvents &stops)
+                : invocationsArr(invocationsArr), warmupInvocations(warmupInvocations), useGpuTimer(useGpuTimer),
+                starts(starts), stops(stops) {}
+
+            private:
+                void run(hip::SolutionAdapter &adapter, hipStream_t stream, std::function<void()> preWarmupCallback, std::function<void()> postWarmupCallback, std::function<void()> validator) const override
+                {
+                    for(int i = 0; i < warmupInvocations; ++i)
+                    {
+                        size_t kIdx = i % invocationsArr.size();
+                        preWarmupCallback();
+
+                        if(useGpuTimer) {
+                            HIP_CHECK_EXC(adapter.launchKernels(invocationsArr[kIdx],
+                                                                stream,
+                                                                starts[i],
+                                                                stops[i]));
+                        }
+                        else {
+                            HIP_CHECK_EXC(adapter.launchKernels(
+                                invocationsArr[kIdx], stream, nullptr, nullptr));
+                        postWarmupCallback();
+                        // Do validation after first warmup
+                        if(i == 0)
+                            validator();
+                        }
+                    }
+                }
+
+            private:
+                const std::vector<KernelInvocations> &invocationsArr;
+                std::size_t warmupInvocations{};
+                bool useGpuTimer{};
+                TimingEvents &starts;
+                TimingEvents &stops;
+            };
+
+            class TimeBasedWarmupRunner : public WarmupRunner
+            {
+            public:
+                static constexpr std::size_t throttleThreshold{5};
+                TimeBasedWarmupRunner(std::size_t timeMs, const std::vector<KernelInvocations> &invocationsArr)
+                : timeMs(timeMs), invocationsArr(invocationsArr) {}
+
+                void run(hip::SolutionAdapter &adapter, hipStream_t stream, std::function<void()> preWarmupCallback, std::function<void()> postWarmupCallback, std::function<void()> validator) const override
+                {
+                    hipEvent_t start;
+                    hipEvent_t stop;
+                    HIP_CHECK_EXC(hipEventCreate(&start));
+                    HIP_CHECK_EXC(hipEventCreate(&stop));
+                    HIP_CHECK_EXC(hipEventRecord(start, stream));
+                    float dur{};
+                    std::size_t iterIdx{};
+
+                    for (std::size_t i = 0; i < throttleThreshold; ++i) {
+                        preWarmupCallback();
+                        const auto &invocations = invocationsArr.at(iterIdx % invocationsArr.size());
+                        HIP_CHECK_EXC(adapter.launchKernels(invocations, stream, nullptr, nullptr));
+                        postWarmupCallback();
+                        ++iterIdx;
+                    }
+
+                    HIP_CHECK_EXC(hipEventRecord(stop, stream));
+
+                    bool validated = false;
+
+                    while (dur < timeMs) {
+                        HIP_CHECK_EXC(hipEventSynchronize(stop));
+                        HIP_CHECK_EXC(hipEventElapsedTime(&dur, start, stop));
+
+                        if (!validated) {
+                            validator();
+                            validated = true;
+                        }
+
+                        for (std::size_t i = 0; i < throttleThreshold; ++i) {
+                            preWarmupCallback();
+                            const auto &invocations = invocationsArr.at(iterIdx % invocationsArr.size());
+                            HIP_CHECK_EXC(adapter.launchKernels(invocations, stream, nullptr, nullptr));
+                            postWarmupCallback();
+                            ++iterIdx;
+                        }
+
+                        HIP_CHECK_EXC(hipEventRecord(stop, stream));
+                    }
+
+                    HIP_CHECK_EXC(hipEventSynchronize(stop));
+                    HIP_CHECK_EXC(hipEventElapsedTime(&dur, start, stop));
+                    HIP_CHECK_EXC(hipStreamSynchronize(stream));
+                    HIP_CHECK_EXC(hipEventDestroy(start));
+                    HIP_CHECK_EXC(hipEventDestroy(stop));
+                }
+
+            private:
+                std::size_t timeMs{};
+                const std::vector<KernelInvocations> &invocationsArr;
+            };
         }
 
     } // namespace Client
@@ -668,34 +766,28 @@ int main(int argc, const char* argv[])
                                 kernels.push_back(kernel);
                             }
 
+                            size_t eventCount = gpuTimer ? kernels[0].size() : 0;
                             size_t warmupTimeMs = args["warmup-time-ms"].as<int>();
-                            size_t estimatedNumWarmups
-                                = warmupTimeMs ? estimateNumWarmups(
-                                      adapter, kernels[0], warmupTimeMs, stream)
-                                               : 0;
-                            size_t warmupInvocations
-                                = max(listeners.numWarmupRuns(), estimatedNumWarmups);
-                            size_t       eventCount = gpuTimer ? kernels[0].size() : 0;
-                            TimingEvents warmupStartEvents(warmupInvocations, eventCount);
-                            TimingEvents warmupStopEvents(warmupInvocations, eventCount);
+                            std::unique_ptr<WarmupRunner> warmupRunner;
 
-                            for(int i = 0; i < warmupInvocations; i++)
+                            if (warmupTimeMs)
                             {
-                                size_t kIdx = i % kernels.size();
-                                listeners.preWarmup();
-                                if(gpuTimer)
-                                    HIP_CHECK_EXC(adapter.launchKernels(kernels[kIdx],
-                                                                        stream,
-                                                                        warmupStartEvents[i],
-                                                                        warmupStopEvents[i]));
-                                else
-                                    HIP_CHECK_EXC(adapter.launchKernels(
-                                        kernels[kIdx], stream, nullptr, nullptr));
-                                listeners.postWarmup();
-                                // Do validation after first warmup
-                                if(i == 0)
-                                    listeners.validateWarmups(
-                                        inputs, warmupStartEvents, warmupStopEvents);
+                                warmupRunner = std::make_unique<TimeBasedWarmupRunner>(warmupTimeMs, kernels);
+                                warmupRunner->run(adapter, stream,
+                                    [&listeners](){ listeners.preWarmup(); },
+                                    [&listeners](){ listeners.postWarmup(); },
+                                    [&listeners, &inputs](){ listeners.validateWarmups(inputs, TimingEvents(0, 0), TimingEvents(0, 0)); });
+                            }
+                            else
+                            {
+                                const size_t warmupInvocations = listeners.numWarmupRuns();
+                                TimingEvents warmupStartEvents(warmupInvocations, eventCount);
+                                TimingEvents warmupStopEvents(warmupInvocations, eventCount);
+                                warmupRunner = std::make_unique<CounterBasedWarmupRunner>(kernels, warmupInvocations, gpuTimer, warmupStartEvents, warmupStopEvents);
+                                warmupRunner->run(adapter, stream,
+                                    [&listeners](){ listeners.preWarmup(); },
+                                    [&listeners](){ listeners.postWarmup(); },
+                                    [&listeners, &inputs, &warmupStartEvents, &warmupStopEvents](){ listeners.validateWarmups(inputs, warmupStartEvents, warmupStopEvents); });
                             }
 
                             size_t syncs = listeners.numSyncs();
