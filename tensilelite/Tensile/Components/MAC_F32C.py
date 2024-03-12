@@ -25,6 +25,7 @@
 from ..TensileInstructions import DataType, Module
 from ..Component import Component, MAC
 
+
 class MAC_F32C_Plain(MAC):
     kernel = {"ProblemType": {"DataType": DataType(DataType.complexSingle)}}
 
@@ -53,8 +54,18 @@ class MAC_F32C_Plain(MAC):
                     cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2]".format_map(vars)
                     aStr = "v[vgprValuA_X{m}_I{iui}+{a}*2+1]".format_map(vars)
                     bStr = "v[vgprValuB_X{m}_I{iui}+{b}*2+1]".format_map(vars)
-                    sign = "-" if (not kernel["ProblemType"]["ComplexConjugateA"] and not kernel["ProblemType"]["ComplexConjugateB"]) or \
-                            (kernel["ProblemType"]["ComplexConjugateA"] and kernel["ProblemType"]["ComplexConjugateB"]) else ""
+                    sign = (
+                        "-"
+                        if (
+                            not kernel["ProblemType"]["ComplexConjugateA"]
+                            and not kernel["ProblemType"]["ComplexConjugateB"]
+                        )
+                        or (
+                            kernel["ProblemType"]["ComplexConjugateA"]
+                            and kernel["ProblemType"]["ComplexConjugateB"]
+                        )
+                        else ""
+                    )
                     module.addInst("_v_mac_f32", cStr, sign + aStr, bStr, "")
 
                     cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2+1]".format_map(vars)
@@ -69,6 +80,8 @@ class MAC_F32C_Plain(MAC):
                     sign = "-" if kernel["ProblemType"]["ComplexConjugateA"] else ""
                     module.addInst("_v_mac_f32", cStr, sign + aStr, bStr, "")
 
-                    module.add(priority(writer, 1, "Raise priority while processing macs"))
+                    module.add(
+                        priority(writer, 1, "Raise priority while processing macs")
+                    )
         module.add(priority(writer, 0, "Reset priority after macs"))
         return module

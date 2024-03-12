@@ -22,8 +22,15 @@
 
 from .Base import Item, getGfxName
 from .Enums import SignatureValueKind
-from .Formatting import slash, slash50, block, block3Line, blockNewLine, \
-                        formatStr, printExit
+from .Formatting import (
+    slash,
+    slash50,
+    block,
+    block3Line,
+    blockNewLine,
+    formatStr,
+    printExit,
+)
 from .Instructions import Instruction, MacroInstruction
 
 from math import ceil
@@ -33,13 +40,15 @@ import ctypes
 # Global to print module names around strings
 printModuleNames = 0
 
-class Label (Item):
+
+class Label(Item):
     """
     Label that can be the target of a jump.
     """
+
     def __init__(self, label, comment):
         super().__init__("")
-        assert(isinstance(label, int) or isinstance(label, str))
+        assert isinstance(label, int) or isinstance(label, str)
         self.label = label
         self.comment = comment
 
@@ -60,6 +69,7 @@ class Label (Item):
         t += "\n"
         return t
 
+
 class Macro(Item):
     def __init__(self, *args):
         super().__init__("")
@@ -74,10 +84,13 @@ class Macro(Item):
     def add(self, item):
         # This is a workaround
         if isinstance(item, (Instruction, Module, TextBlock)):
-            item.parent = self # type: ignore
+            item.parent = self  # type: ignore
             self.itemList.append(item)
         else:
-            assert 0, "unknown item type (%s) for Code.add. item=%s"%(type(item), item)
+            assert 0, "unknown item type (%s) for Code.add. item=%s" % (
+                type(item),
+                item,
+            )
         return item
 
     def addComment0(self, comment):
@@ -85,11 +98,11 @@ class Macro(Item):
         Convenience function to format arg as a comment and add TextBlock item
         This comment is a single line /* MYCOMMENT  */
         """
-        self.add(TextBlock("/* %s */\n"%comment))
+        self.add(TextBlock("/* %s */\n" % comment))
 
-    def prettyPrint(self,indent=""):
+    def prettyPrint(self, indent=""):
         ostream = ""
-        ostream += '%s%s "%s"\n'%(indent, type(self).__name__, self.name)
+        ostream += '%s%s "%s"\n' % (indent, type(self).__name__, self.name)
         for i in self.itemList:
             ostream += i.prettyPrint(indent.replace("|--", "| ") + "|--")
         return ostream
@@ -105,7 +118,7 @@ class Macro(Item):
         return self.itemList
 
     def __str__(self):
-        assert(self.macro)
+        assert self.macro
         s = ""
         if printModuleNames:
             s += "// %s { \n" % self.name
@@ -116,6 +129,7 @@ class Macro(Item):
             s += "// } %s\n" % self.name
         return s
 
+
 class Module(Item):
     """
     Modules contain lists of text instructions, Inst objects, or additional modules
@@ -125,6 +139,7 @@ class Module(Item):
     code (ie which instructions are a related module) so the scheduler can later
     make intelligent and legal transformations.
     """
+
     def __init__(self, name="") -> None:
         super().__init__(name)
         self.itemList = []
@@ -138,7 +153,7 @@ class Module(Item):
         return self._isNoOpt
 
     def findNamedItem(self, targetName):
-        return next((item for item in self.itemList if item.name==targetName), None)
+        return next((item for item in self.itemList if item.name == targetName), None)
 
     def setInlineAsmPrintMode(self, mode):
         for item in self.itemList:
@@ -166,20 +181,23 @@ class Module(Item):
         Returns item to facilitate one-line create/add patterns
         """
         if isinstance(item, Item):
-            item.parent = self # type: ignore
+            item.parent = self  # type: ignore
             if pos == -1:
                 self.itemList.append(item)
             else:
                 self.itemList.insert(pos, item)
         else:
-            assert 0, "unknown item type (%s) for Module.add. item=%s"%(type(item), item)
+            assert 0, "unknown item type (%s) for Module.add. item=%s" % (
+                type(item),
+                item,
+            )
         return item
 
     def appendModule(self, module):
         """
         Append items to module.
         """
-        assert(isinstance(module, Module))
+        assert isinstance(module, Module)
         for i in module.items():
             self.add(i)
         return module
@@ -190,7 +208,7 @@ class Module(Item):
 
         Returns items to facilitate one-line create/add patterns
         """
-        assert(isinstance(module, Module))
+        assert isinstance(module, Module)
         for i in module.flatitems():
             self.add(i)
         return module
@@ -232,9 +250,9 @@ class Module(Item):
     def addComment2(self, comment):
         self.add(TextBlock(block3Line(comment)))
 
-    def prettyPrint(self,indent=""):
+    def prettyPrint(self, indent=""):
         ostream = ""
-        ostream += '%s%s "%s"\n'%(indent, type(self).__name__, self.name)
+        ostream += '%s%s "%s"\n' % (indent, type(self).__name__, self.name)
         for i in self.itemList:
             ostream += i.prettyPrint(indent.replace("|--", "| ") + "|--")
         return ostream
@@ -283,19 +301,19 @@ class Module(Item):
             count += self.countType(ttype)
         return count
 
-    def countType(self,ttype):
+    def countType(self, ttype):
         """
         Count number of items with specified type in this Module
         Will recursively count occurrences in submodules
         (Overrides Item.countType)
         """
-        count=0
+        count = 0
         for i in self.itemList:
             count += i.countType(ttype)
         return count
 
     def count(self):
-        count=0
+        count = 0
         for i in self.itemList:
             if isinstance(i, Module):
                 count += i.count()
@@ -346,14 +364,14 @@ class Module(Item):
         del self.itemList[index]
 
     def removeItem(self, item):
-        self.itemList = [ x for x in self.itemList if x is not item ]
+        self.itemList = [x for x in self.itemList if x is not item]
 
     def removeItemsByName(self, name):
         """
         Remove items from itemList
         Items may be other Modules, TexBlock, or Inst
         """
-        self.itemList = [ x for x in self.itemList if x.name != name ]
+        self.itemList = [x for x in self.itemList if x.name != name]
 
     def flatitems(self):
         """
@@ -372,27 +390,31 @@ class Module(Item):
     def addTempVgpr(self, vgpr):
         self.tempVgpr = vgpr
 
+
 class StructuredModule(Module):
     def __init__(self, name=""):
         Module.__init__(self, name)
         self.header = Module("header")
         self.middle = Module("middle")
-        self.footer =  Module("footer")
+        self.footer = Module("footer")
 
         self.add(self.header)
         self.add(self.middle)
         self.add(self.footer)
 
+
 class TextBlock(Item):
     """
     An unstructured block of text
     """
+
     def __init__(self, text: str):
         super().__init__(text)
         self.text = text
 
     def __str__(self) -> str:
         return self.text
+
 
 class ValueEndif(Item):
     def __init__(self, comment=""):
@@ -402,6 +424,7 @@ class ValueEndif(Item):
     def __str__(self):
         return formatStr(False, ".endif", self.comment)
 
+
 class ValueIf(Item):
     def __init__(self, value: int):
         super().__init__("ValueIf")
@@ -410,14 +433,15 @@ class ValueIf(Item):
     def __str__(self):
         return ".if " + str(self.value)
 
+
 class ValueSet(Item):
-    def __init__(self, name, value, offset = 0, format = 0):
+    def __init__(self, name, value, offset=0, format=0):
         super().__init__(name)
         if isinstance(value, int):
-            self.ref   = None
+            self.ref = None
             self.value = value
         elif isinstance(value, str):
-            self.ref   = value
+            self.ref = value
             self.value = None
         self.offset = offset
         # -1 for no offset, 0 for dec, 1 for hex
@@ -440,11 +464,13 @@ class ValueSet(Item):
         t += "\n"
         return t
 
+
 class RegSet(ValueSet):
-    def __init__(self, regType, name, value, offset = 0):
+    def __init__(self, regType, name, value, offset=0):
         super().__init__(name, value, offset)
         # v or s
         self.regType = regType
+
 
 class BitfieldStructure(ctypes.Structure):
     def field_desc(self, field):
@@ -454,7 +480,8 @@ class BitfieldStructure(ctypes.Structure):
         return "{0}{1}: {2}".format(fname, bits, value)
 
     def desc(self):
-        return '\n'.join([self.field_desc(field) for field in self._fields_])
+        return "\n".join([self.field_desc(field) for field in self._fields_])
+
 
 class BitfieldUnion(ctypes.Union):
     def __str__(self):
@@ -466,25 +493,29 @@ class BitfieldUnion(ctypes.Union):
     def desc(self):
         return "hex: {}\n".format(self) + self.fields.desc()
 
+
 class SrdUpperFields9XX(BitfieldStructure):
-    _fields_ = [("dst_sel_x",      ctypes.c_uint, 3),
-                ("dst_sel_y",      ctypes.c_uint, 3),
-                ("dst_sel_z",      ctypes.c_uint, 3),
-                ("dst_sel_w",      ctypes.c_uint, 3),
-                ("num_format",     ctypes.c_uint, 3),
-                ("data_format",    ctypes.c_uint, 4),
-                ("user_vm_enable", ctypes.c_uint, 1),
-                ("user_vm_mode",   ctypes.c_uint, 1),
-                ("index_stride",   ctypes.c_uint, 2),
-                ("add_tid_enable", ctypes.c_uint, 1),
-                ("_unusedA",       ctypes.c_uint, 3),
-                ("nv",             ctypes.c_uint, 1),
-                ("_unusedB",       ctypes.c_uint, 2),
-                ("type",           ctypes.c_uint, 2)]
+    _fields_ = [
+        ("dst_sel_x", ctypes.c_uint, 3),
+        ("dst_sel_y", ctypes.c_uint, 3),
+        ("dst_sel_z", ctypes.c_uint, 3),
+        ("dst_sel_w", ctypes.c_uint, 3),
+        ("num_format", ctypes.c_uint, 3),
+        ("data_format", ctypes.c_uint, 4),
+        ("user_vm_enable", ctypes.c_uint, 1),
+        ("user_vm_mode", ctypes.c_uint, 1),
+        ("index_stride", ctypes.c_uint, 2),
+        ("add_tid_enable", ctypes.c_uint, 1),
+        ("_unusedA", ctypes.c_uint, 3),
+        ("nv", ctypes.c_uint, 1),
+        ("_unusedB", ctypes.c_uint, 2),
+        ("type", ctypes.c_uint, 2),
+    ]
 
     @classmethod
     def default(cls):
-        return cls(data_format = 4)
+        return cls(data_format=4)
+
 
 class SrdUpperValue9XX(BitfieldUnion):
     _fields_ = [("fields", SrdUpperFields9XX), ("value", ctypes.c_uint32)]
@@ -493,27 +524,27 @@ class SrdUpperValue9XX(BitfieldUnion):
     def default(cls):
         return cls(fields=SrdUpperFields9XX.default())
 
-class SrdUpperFields10XX(BitfieldStructure):
-    _fields_ = [("dst_sel_x",      ctypes.c_uint, 3),
-                ("dst_sel_y",      ctypes.c_uint, 3),
-                ("dst_sel_z",      ctypes.c_uint, 3),
-                ("dst_sel_w",      ctypes.c_uint, 3),
-                ("format",         ctypes.c_uint, 7),
-                ("_unusedA",       ctypes.c_uint, 2),
-                ("index_stride",   ctypes.c_uint, 2),
-                ("add_tid_enable", ctypes.c_uint, 1),
-                ("resource_level", ctypes.c_uint, 1),
-                ("_unusedB",       ctypes.c_uint, 1),
-                ("LLC_noalloc",    ctypes.c_uint, 2),
-                ("oob_select",     ctypes.c_uint, 2),
-                ("type",           ctypes.c_uint, 2)]
 
+class SrdUpperFields10XX(BitfieldStructure):
+    _fields_ = [
+        ("dst_sel_x", ctypes.c_uint, 3),
+        ("dst_sel_y", ctypes.c_uint, 3),
+        ("dst_sel_z", ctypes.c_uint, 3),
+        ("dst_sel_w", ctypes.c_uint, 3),
+        ("format", ctypes.c_uint, 7),
+        ("_unusedA", ctypes.c_uint, 2),
+        ("index_stride", ctypes.c_uint, 2),
+        ("add_tid_enable", ctypes.c_uint, 1),
+        ("resource_level", ctypes.c_uint, 1),
+        ("_unusedB", ctypes.c_uint, 1),
+        ("LLC_noalloc", ctypes.c_uint, 2),
+        ("oob_select", ctypes.c_uint, 2),
+        ("type", ctypes.c_uint, 2),
+    ]
 
     @classmethod
     def default(cls):
-        return cls(format         = 4,
-                   resource_level = 1,
-                   oob_select     = 3)
+        return cls(format=4, resource_level=1, oob_select=3)
 
 
 class SrdUpperValue10XX(BitfieldUnion):
@@ -525,25 +556,26 @@ class SrdUpperValue10XX(BitfieldUnion):
 
 
 class SrdUpperFields11XX(BitfieldStructure):
-    _fields_ = [("dst_sel_x",      ctypes.c_uint, 3),
-                ("dst_sel_y",      ctypes.c_uint, 3),
-                ("dst_sel_z",      ctypes.c_uint, 3),
-                ("dst_sel_w",      ctypes.c_uint, 3),
-                ("format",         ctypes.c_uint, 7),
-                ("_unusedA",       ctypes.c_uint, 2),
-                ("index_stride",   ctypes.c_uint, 2),
-                ("add_tid_enable", ctypes.c_uint, 1),
-                ("resource_level", ctypes.c_uint, 1),
-                ("_unusedB",       ctypes.c_uint, 1),
-                ("LLC_noalloc",    ctypes.c_uint, 2),
-                ("oob_select",     ctypes.c_uint, 2),
-                ("type",           ctypes.c_uint, 2)]
+    _fields_ = [
+        ("dst_sel_x", ctypes.c_uint, 3),
+        ("dst_sel_y", ctypes.c_uint, 3),
+        ("dst_sel_z", ctypes.c_uint, 3),
+        ("dst_sel_w", ctypes.c_uint, 3),
+        ("format", ctypes.c_uint, 7),
+        ("_unusedA", ctypes.c_uint, 2),
+        ("index_stride", ctypes.c_uint, 2),
+        ("add_tid_enable", ctypes.c_uint, 1),
+        ("resource_level", ctypes.c_uint, 1),
+        ("_unusedB", ctypes.c_uint, 1),
+        ("LLC_noalloc", ctypes.c_uint, 2),
+        ("oob_select", ctypes.c_uint, 2),
+        ("type", ctypes.c_uint, 2),
+    ]
 
     @classmethod
     def default(cls):
-        return cls(format         = 4,
-                   resource_level = 1,
-                   oob_select     = 3)
+        return cls(format=4, resource_level=1, oob_select=3)
+
 
 class SrdUpperValue11XX(BitfieldUnion):
     _fields_ = [("fields", SrdUpperFields11XX), ("value", ctypes.c_uint32)]
@@ -551,6 +583,7 @@ class SrdUpperValue11XX(BitfieldUnion):
     @classmethod
     def default(cls):
         return cls(fields=SrdUpperFields11XX.default())
+
 
 def SrdUpperValue(isa):
     if isa[0] == 11:
@@ -560,33 +593,36 @@ def SrdUpperValue(isa):
     else:
         return SrdUpperValue9XX.default()
 
+
 ########################################
 # Signatures
 ########################################
 
+
 class _SignatureArgument(Item):
 
-    ValueTypeSizeDict = {'i8':  1,
-                         'i16': 2,
-                         'i32': 4,
-                         'i64': 8,
-                         'u8':  1,
-                         'u16': 2,
-                         'u32': 4,
-                         'u64': 8,
-                         'bf16': 2,
-                         'f16': 2,
-                         'f32': 4,
-                         'f64': 8,
-                         'pkf16': 4,
-                         'struct': 8
-                        }
+    ValueTypeSizeDict = {
+        "i8": 1,
+        "i16": 2,
+        "i32": 4,
+        "i64": 8,
+        "u8": 1,
+        "u16": 2,
+        "u32": 4,
+        "u64": 8,
+        "bf16": 2,
+        "f16": 2,
+        "f32": 4,
+        "f64": 8,
+        "pkf16": 4,
+        "struct": 8,
+    }
 
-    def __init__(self, name, valueKind, valueType, addrSpaceQual = None):
+    def __init__(self, name, valueKind, valueType, addrSpaceQual=None):
         super().__init__(name)
         self.valueKind = valueKind
         self.valueType = valueType
-        self.size      = self.valueToSize(valueKind, valueType)
+        self.size = self.valueToSize(valueKind, valueType)
 
         self.addrSpaceQual = addrSpaceQual
 
@@ -601,6 +637,7 @@ class _SignatureArgument(Item):
             return "global_buffer"
         elif self.valueKind == SignatureValueKind.SIG_VALUE:
             return "by_value"
+
 
 class _SignatureArgument(_SignatureArgument):
     def __init__(self, offset, name, valueKind, valueType, addrSpaceQual=None):
@@ -619,20 +656,30 @@ class _SignatureArgument(_SignatureArgument):
             kStr += signatureIndent + ".address_space:   %s\n" % self.addrSpaceQual
         return kStr
 
+
 class _SignatureKernelDescriptor(Item):
-    def __init__(self, name, groupSegSize, sgprWorkGroup, vgprWorkItem, \
-        totalVgprs: int=0, totalAgprs: int=0, totalSgprs: int =0, preloadKernArgs: bool=False):
+    def __init__(
+        self,
+        name,
+        groupSegSize,
+        sgprWorkGroup,
+        vgprWorkItem,
+        totalVgprs: int = 0,
+        totalAgprs: int = 0,
+        totalSgprs: int = 0,
+        preloadKernArgs: bool = False,
+    ):
         super().__init__(name)
         # accumulator offset for Unified Register Files
         if self.archCaps["ArchAccUnifiedRegs"]:
-            self.accumOffset = ceil(totalVgprs/8)*8
+            self.accumOffset = ceil(totalVgprs / 8) * 8
             self.totalVgprs = self.accumOffset + totalAgprs
         else:
             self.accumOffset = None
             self.totalVgprs = totalVgprs
         self.originalTotalVgprs = totalVgprs
-        self.totalAgprs         = totalAgprs
-        self.totalSgprs         = totalSgprs
+        self.totalAgprs = totalAgprs
+        self.totalSgprs = totalSgprs
         self.groupSegSize = groupSegSize
         self.sgprWorkGroup = sgprWorkGroup
         self.vgprWorkItem = vgprWorkItem
@@ -640,20 +687,21 @@ class _SignatureKernelDescriptor(Item):
 
     def setGprs(self, totalVgprs: int, totalAgprs: int, totalSgprs: int):
         if self.archCaps["ArchAccUnifiedRegs"]:
-            self.accumOffset = ceil(totalVgprs/8)*8
+            self.accumOffset = ceil(totalVgprs / 8) * 8
             self.totalVgprs = self.accumOffset + totalAgprs
         else:
             self.accumOffset = None
             self.totalVgprs = totalVgprs
         self.originalTotalVgprs = totalVgprs
-        self.totalAgprs         = totalAgprs
-        self.totalSgprs         = totalSgprs
+        self.totalAgprs = totalAgprs
+        self.totalSgprs = totalSgprs
 
     def __str__(self):
         kdIndent = " " * 2
         kStr = ""
-        kStr += ".amdgcn_target \"amdgcn-amd-amdhsa--%s\"\n" \
-            % (getGfxName(self.kernel.isa))
+        kStr += '.amdgcn_target "amdgcn-amd-amdhsa--%s"\n' % (
+            getGfxName(self.kernel.isa)
+        )
         kStr += ".text\n"
         kStr += ".protected %s\n" % self.name
         kStr += ".globl %s\n" % self.name
@@ -664,41 +712,70 @@ class _SignatureKernelDescriptor(Item):
         kStr += ".amdhsa_kernel %s\n" % self.name
         kStr += kdIndent + ".amdhsa_user_sgpr_kernarg_segment_ptr 1\n"
         if self.accumOffset != None:
-            kStr += kdIndent + ".amdhsa_accum_offset %u // accvgpr offset\n" % self.accumOffset
+            kStr += (
+                kdIndent
+                + ".amdhsa_accum_offset %u // accvgpr offset\n" % self.accumOffset
+            )
         kStr += kdIndent + ".amdhsa_next_free_vgpr %u // vgprs\n" % self.totalVgprs
         kStr += kdIndent + ".amdhsa_next_free_sgpr %u // sgprs\n" % self.totalSgprs
-        kStr += kdIndent + ".amdhsa_group_segment_fixed_size %u // lds bytes\n" % self.groupSegSize
+        kStr += (
+            kdIndent
+            + ".amdhsa_group_segment_fixed_size %u // lds bytes\n" % self.groupSegSize
+        )
         if self.archCaps["HasWave32"]:
             if self.kernel.wavefrontSize == 32:
-                kStr += kdIndent + ".amdhsa_wavefront_size32 1 // 32-thread wavefronts\n"
+                kStr += (
+                    kdIndent + ".amdhsa_wavefront_size32 1 // 32-thread wavefronts\n"
+                )
             else:
-                kStr += kdIndent + ".amdhsa_wavefront_size32 0 // 64-thread wavefronts\n"
+                kStr += (
+                    kdIndent + ".amdhsa_wavefront_size32 0 // 64-thread wavefronts\n"
+                )
         kStr += kdIndent + ".amdhsa_private_segment_fixed_size 0\n"
-        kStr += kdIndent + ".amdhsa_system_sgpr_workgroup_id_x %u\n" % self.sgprWorkGroup[0]
-        kStr += kdIndent + ".amdhsa_system_sgpr_workgroup_id_y %u\n" % self.sgprWorkGroup[1]
-        kStr += kdIndent + ".amdhsa_system_sgpr_workgroup_id_z %u\n" % self.sgprWorkGroup[2]
+        kStr += (
+            kdIndent + ".amdhsa_system_sgpr_workgroup_id_x %u\n" % self.sgprWorkGroup[0]
+        )
+        kStr += (
+            kdIndent + ".amdhsa_system_sgpr_workgroup_id_y %u\n" % self.sgprWorkGroup[1]
+        )
+        kStr += (
+            kdIndent + ".amdhsa_system_sgpr_workgroup_id_z %u\n" % self.sgprWorkGroup[2]
+        )
         kStr += kdIndent + ".amdhsa_system_vgpr_workitem_id %u\n" % self.vgprWorkItem
         kStr += kdIndent + ".amdhsa_float_denorm_mode_32 3\n"
         kStr += kdIndent + ".amdhsa_float_denorm_mode_16_64 3\n"
         if self.enablePreloadKernArgs:
-            numWorkgroupSgpr = self.sgprWorkGroup[0] + self.sgprWorkGroup[1] + self.sgprWorkGroup[2]
-            kStr += kdIndent + ".amdhsa_user_sgpr_count %d\n" % (16-numWorkgroupSgpr)
-            kStr += kdIndent + ".amdhsa_user_sgpr_kernarg_preload_length %d\n" % (14-numWorkgroupSgpr)
+            numWorkgroupSgpr = (
+                self.sgprWorkGroup[0] + self.sgprWorkGroup[1] + self.sgprWorkGroup[2]
+            )
+            kStr += kdIndent + ".amdhsa_user_sgpr_count %d\n" % (16 - numWorkgroupSgpr)
+            kStr += kdIndent + ".amdhsa_user_sgpr_kernarg_preload_length %d\n" % (
+                14 - numWorkgroupSgpr
+            )
             kStr += kdIndent + ".amdhsa_user_sgpr_kernarg_preload_offset 0\n"
         kStr += ".end_amdhsa_kernel\n"
         kStr += ".text\n"
-        kStr += block("Num VGPR   =%u"%self.originalTotalVgprs)
-        kStr += block("Num AccVGPR=%u"%self.totalAgprs)
-        kStr += block("Num SGPR   =%u"%self.totalSgprs)
+        kStr += block("Num VGPR   =%u" % self.originalTotalVgprs)
+        kStr += block("Num AccVGPR=%u" % self.totalAgprs)
+        kStr += block("Num SGPR   =%u" % self.totalSgprs)
         return kStr
 
     def prettyPrint(self, indent=""):
         ostream = ""
-        ostream += "%s%s "%(indent, type(self).__name__)
+        ostream += "%s%s " % (indent, type(self).__name__)
         return ostream
 
+
 class SignatureCodeMeta(Item):
-    def __init__(self, name, groupSegSize, flatWgSize, codeObjectVersion, totalVgprs = 0, totalSgprs=0):
+    def __init__(
+        self,
+        name,
+        groupSegSize,
+        flatWgSize,
+        codeObjectVersion,
+        totalVgprs=0,
+        totalSgprs=0,
+    ):
         super().__init__(name)
         self.groupSegSize = groupSegSize
         self.flatWgSize = flatWgSize
@@ -734,7 +811,9 @@ class SignatureCodeMeta(Item):
             kStr += str(i)
         kStr += "    .group_segment_fixed_size:   %u\n" % self.groupSegSize
         kStr += "    .kernarg_segment_align:      %u\n" % 8
-        kStr += "    .kernarg_segment_size:       %u\n" % (((self.offset+7)//8)*8) # round up to .kernarg_segment_align
+        kStr += "    .kernarg_segment_size:       %u\n" % (
+            ((self.offset + 7) // 8) * 8
+        )  # round up to .kernarg_segment_align
         kStr += "    .max_flat_workgroup_size:    %u\n" % self.flatWgSize
         kStr += "    .private_segment_fixed_size: %u\n" % 0
         kStr += "    .sgpr_count:                 %u\n" % self.totalSgprs
@@ -748,48 +827,76 @@ class SignatureCodeMeta(Item):
         kStr += "%s:\n" % self.name
         return kStr
 
-    def addArg(self, name: str, kind: SignatureValueKind, type: str, addrSpaceQual: Optional[str]=None):
+    def addArg(
+        self,
+        name: str,
+        kind: SignatureValueKind,
+        type: str,
+        addrSpaceQual: Optional[str] = None,
+    ):
         sa = _SignatureArgument(self.offset, name, kind, type, addrSpaceQual)
         self.argList.append(sa)
         self.offset += sa.size
 
     def prettyPrint(self, indent=""):
         ostream = ""
-        ostream += "%s%s "%(indent, type(self).__name__)
+        ostream += "%s%s " % (indent, type(self).__name__)
         return ostream
 
+
 class SignatureBase(Item):
-    def __init__(self, kernelName, codeObjectVersion, groupSegmentSize, sgprWorkGroup, \
-        vgprWorkItem, flatWorkGroupSize, totalVgprs: int=0, totalAgprs: int=0, \
-        totalSgprs: int=0, preloadKernArgs: bool=False) -> None:
+    def __init__(
+        self,
+        kernelName,
+        codeObjectVersion,
+        groupSegmentSize,
+        sgprWorkGroup,
+        vgprWorkItem,
+        flatWorkGroupSize,
+        totalVgprs: int = 0,
+        totalAgprs: int = 0,
+        totalSgprs: int = 0,
+        preloadKernArgs: bool = False,
+    ) -> None:
         super().__init__(kernelName)
 
         # Internal data
-        self.kernelDescriptor = _SignatureKernelDescriptor(name=kernelName,
-                                                                totalVgprs=totalVgprs,
-                                                                totalAgprs=totalAgprs,
-                                                                totalSgprs=totalSgprs,
-                                                                groupSegSize=groupSegmentSize,
-                                                                sgprWorkGroup=sgprWorkGroup,
-                                                                vgprWorkItem=vgprWorkItem,
-                                                                preloadKernArgs=preloadKernArgs)
-        self.codeMeta = SignatureCodeMeta(name=kernelName,
-                                                groupSegSize=groupSegmentSize,
-                                                flatWgSize=flatWorkGroupSize,
-                                                codeObjectVersion=codeObjectVersion,
-                                                totalVgprs=totalVgprs,
-                                                totalSgprs=totalSgprs)
+        self.kernelDescriptor = _SignatureKernelDescriptor(
+            name=kernelName,
+            totalVgprs=totalVgprs,
+            totalAgprs=totalAgprs,
+            totalSgprs=totalSgprs,
+            groupSegSize=groupSegmentSize,
+            sgprWorkGroup=sgprWorkGroup,
+            vgprWorkItem=vgprWorkItem,
+            preloadKernArgs=preloadKernArgs,
+        )
+        self.codeMeta = SignatureCodeMeta(
+            name=kernelName,
+            groupSegSize=groupSegmentSize,
+            flatWgSize=flatWorkGroupSize,
+            codeObjectVersion=codeObjectVersion,
+            totalVgprs=totalVgprs,
+            totalSgprs=totalSgprs,
+        )
 
         # Comment description
         self.descriptionTopic = None
         self.descriptionList = []
 
     def setGprs(self, totalVgprs: int, totalAgprs: int, totalSgprs: int):
-        self.kernelDescriptor.setGprs(totalVgprs=totalVgprs, totalAgprs=totalAgprs, \
-            totalSgprs=totalSgprs)
+        self.kernelDescriptor.setGprs(
+            totalVgprs=totalVgprs, totalAgprs=totalAgprs, totalSgprs=totalSgprs
+        )
         self.codeMeta.setGprs(totalVgprs=totalVgprs, totalSgprs=totalSgprs)
 
-    def addArg(self, name: str, kind: SignatureValueKind, type: str, addrSpaceQual: Optional[str]=None):
+    def addArg(
+        self,
+        name: str,
+        kind: SignatureValueKind,
+        type: str,
+        addrSpaceQual: Optional[str] = None,
+    ):
         self.codeMeta.addArg(name, kind, type, addrSpaceQual)
 
     def addDescriptionTopic(self, text: str):
@@ -816,12 +923,14 @@ class SignatureBase(Item):
 
     def prettyPrint(self, indent=""):
         ostream = ""
-        ostream += "%s%s "%(indent, type(self).__name__)
+        ostream += "%s%s " % (indent, type(self).__name__)
         return ostream
+
 
 ########################################
 # Signatures
 ########################################
+
 
 class KernelBody(Item):
     def __init__(self, name) -> None:
@@ -837,8 +946,9 @@ class KernelBody(Item):
         self.totalVgprs = totalVgprs
         self.totalAgprs = totalAgprs
         self.totalSgprs = totalSgprs
-        self.signature.setGprs(totalVgprs=totalVgprs, totalAgprs=totalAgprs, \
-            totalSgprs=totalSgprs)
+        self.signature.setGprs(
+            totalVgprs=totalVgprs, totalAgprs=totalAgprs, totalSgprs=totalSgprs
+        )
 
     def __str__(self) -> str:
         kStr = str(TextBlock(block3Line("Begin Kernel")))

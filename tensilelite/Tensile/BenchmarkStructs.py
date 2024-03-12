@@ -24,12 +24,25 @@
 
 from copy import deepcopy
 import itertools
-from .Common import print1, print2, hasParam, printExit, \
-        defaultBenchmarkCommonParameters, validParameters, globalParameters, \
-        defaultBatchedBenchmarkFinalProblemSizes, defaultBenchmarkFinalProblemSizes
+from .Common import (
+    print1,
+    print2,
+    hasParam,
+    printExit,
+    defaultBenchmarkCommonParameters,
+    validParameters,
+    globalParameters,
+    defaultBatchedBenchmarkFinalProblemSizes,
+    defaultBenchmarkFinalProblemSizes,
+)
 from .CustomKernels import getAllCustomKernelNames
-from .SolutionStructs import ProblemType, ProblemSizes, ActivationArgs, BiasTypeArgs, \
-        BiasDimArgs
+from .SolutionStructs import (
+    ProblemType,
+    ProblemSizes,
+    ActivationArgs,
+    BiasTypeArgs,
+    BiasDimArgs,
+)
 
 
 def getDefaultsForMissingParameters(paramList, defaultParams):
@@ -37,8 +50,7 @@ def getDefaultsForMissingParameters(paramList, defaultParams):
     benchmarkParams = {}
     for paramDict in defaultParams:
         for name, value in paramDict.items():
-            if not hasParam(name, paramList) \
-                    or name == "ProblemSizes":
+            if not hasParam(name, paramList) or name == "ProblemSizes":
                 benchmarkParams[name] = value
     return benchmarkParams
 
@@ -52,14 +64,20 @@ def checkParametersAreValid(param, validParams):
         return
 
     if name not in validParams:
-        printExit("Invalid parameter name: {}\nValid parameters are {}." \
-                .format(name, sorted(validParameters.keys())))
+        printExit(
+            "Invalid parameter name: {}\nValid parameters are {}.".format(
+                name, sorted(validParameters.keys())
+            )
+        )
 
     for value in values:
         if validParams[name] != -1 and value not in validParams[name]:
             msgBase = "Invalid parameter value: {} = {}\nValid values for {} are {}{}."
-            msgExt = " (only first 32 combos printed)\nRefer to Common.py for more info" \
-                    if len(validParams[name])>32 else ""
+            msgExt = (
+                " (only first 32 combos printed)\nRefer to Common.py for more info"
+                if len(validParams[name]) > 32
+                else ""
+            )
             printExit(msgBase.format(name, value, name, validParams[name][:32], msgExt))
 
 
@@ -69,7 +87,7 @@ def separateParameters(paramSetList):
     multiValues = {}
     for name, values in paramSetList.items():
         if values == None:
-            printExit("You must specify value(s) for parameter \"{}\"".format(name))
+            printExit('You must specify value(s) for parameter "{}"'.format(name))
         if len(values) == 1 and name != "ProblemSizes":
             singleVaules[name] = values[0]
         elif len(values) > 1 and name != "ProblemSizes":
@@ -85,8 +103,11 @@ def checkCDBufferAndStrides(problemType, problemSizes, isCEqualD):
             ldd = problem.sizes[problemType["IndexAssignmentsLD"][0]]
             ldc = problem.sizes[problemType["IndexAssignmentsLD"][1]]
             if ldd != ldc:
-                printExit("LDD({}) != LDC({}) causes unpredictable result when CEqualD(True)" \
-                        .format(ldd, ldc))
+                printExit(
+                    "LDD({}) != LDC({}) causes unpredictable result when CEqualD(True)".format(
+                        ldd, ldc
+                    )
+                )
 
 
 class BenchmarkProcess:
@@ -121,8 +142,12 @@ class BenchmarkProcess:
         print2("")
 
         # check for no longer supported legacy benchmark steps
-        badParams = ["InitialSolutionParameters", "BenchmarkForkParameters", \
-                     "JoinParameters", "BenchmarkJoinParameters"]
+        badParams = [
+            "InitialSolutionParameters",
+            "BenchmarkForkParameters",
+            "JoinParameters",
+            "BenchmarkJoinParameters",
+        ]
         badsInConfig = []
 
         for p in badParams:
@@ -130,8 +155,11 @@ class BenchmarkProcess:
                 badsInConfig.append(p)
 
         if len(badsInConfig) == 1:
-            printExit("Benchmark step {} is no longer supported".format("'" + badsInConfig[0] +
-                                                                        "'"))
+            printExit(
+                "Benchmark step {} is no longer supported".format(
+                    "'" + badsInConfig[0] + "'"
+                )
+            )
         elif len(badsInConfig) > 1:
             printExit("Benchmark steps {} are no longer supported".format(badsInConfig))
 
@@ -144,10 +172,19 @@ class BenchmarkProcess:
                 return default
 
         # converts list of dicts into a flat dict
-        benchmarkCommonParams = dict(itertools.chain(*[x.items() \
-                for x in getNonNoneFromConfig("BenchmarkCommonParameters", [])]))
-        forkParams = dict(itertools.chain(*[x.items() \
-                for x in getNonNoneFromConfig("ForkParameters", [])]))
+        benchmarkCommonParams = dict(
+            itertools.chain(
+                *[
+                    x.items()
+                    for x in getNonNoneFromConfig("BenchmarkCommonParameters", [])
+                ]
+            )
+        )
+        forkParams = dict(
+            itertools.chain(
+                *[x.items() for x in getNonNoneFromConfig("ForkParameters", [])]
+            )
+        )
         self.paramGroups = forkParams.pop("Groups") if "Groups" in forkParams else []
         self.customKernels = getNonNoneFromConfig("CustomKernels", [])
         self.internalSupportParams = getNonNoneFromConfig("InternalSupportParams", {})
@@ -155,33 +192,38 @@ class BenchmarkProcess:
             printExit("InternalSupportParams only supports Custom Kernels")
 
         activationConf = ""
-        biasTypesConf  = ""
-        biasDimConf  = ""
+        biasTypesConf = ""
+        biasDimConf = ""
         if "BenchmarkFinalParameters" in config:
-            sizes          = config["BenchmarkFinalParameters"][0]["ProblemSizes"]
+            sizes = config["BenchmarkFinalParameters"][0]["ProblemSizes"]
             for bfp in config["BenchmarkFinalParameters"][1:]:
                 if "ActivationArgs" in bfp:
-                  if activationConf:
-                    printExit("Duplicated ActivationArgs.")
-                  activationConf = bfp["ActivationArgs"]
+                    if activationConf:
+                        printExit("Duplicated ActivationArgs.")
+                    activationConf = bfp["ActivationArgs"]
                 if "BiasTypeArgs" in bfp:
-                  if biasTypesConf:
-                    printExit("Duplicated BiasTypeArgs.")
-                  biasTypesConf = bfp["BiasTypeArgs"]
+                    if biasTypesConf:
+                        printExit("Duplicated BiasTypeArgs.")
+                    biasTypesConf = bfp["BiasTypeArgs"]
                 if "BiasDimArgs" in bfp:
-                  if biasDimConf:
-                    printExit("Duplicated BiasDimArgs.")
-                  biasDimConf = bfp["BiasDimArgs"]
+                    if biasDimConf:
+                        printExit("Duplicated BiasDimArgs.")
+                    biasDimConf = bfp["BiasDimArgs"]
         else:
-            sizes = defaultBatchedBenchmarkFinalProblemSizes if isbatched \
+            sizes = (
+                defaultBatchedBenchmarkFinalProblemSizes
+                if isbatched
                 else defaultBenchmarkFinalProblemSizes
+            )
 
         self.problemSizes = ProblemSizes(self.problemType, sizes)
-        checkCDBufferAndStrides(self.problemType, self.problemSizes, globalParameters["CEqualD"])
+        checkCDBufferAndStrides(
+            self.problemType, self.problemSizes, globalParameters["CEqualD"]
+        )
 
-        self.biasTypesArgs  = BiasTypeArgs(self.problemType, biasTypesConf)
+        self.biasTypesArgs = BiasTypeArgs(self.problemType, biasTypesConf)
         self.activationArgs = ActivationArgs(self.problemType, activationConf)
-        self.biasDimArgs  = BiasDimArgs(self.problemType, biasDimConf)
+        self.biasDimArgs = BiasDimArgs(self.problemType, biasDimConf)
 
         # validate parameter values
         configParams = {**benchmarkCommonParams, **forkParams}
@@ -194,7 +236,9 @@ class BenchmarkProcess:
                 for k, v in group.items():
                     checkParametersAreValid((k, [v]), validParameters)
 
-        params = dict(itertools.chain(*[x.items() for x in defaultBenchmarkCommonParameters]))
+        params = dict(
+            itertools.chain(*[x.items() for x in defaultBenchmarkCommonParameters])
+        )
         params.update(configParams)
         self.singleValueParams, self.multiValueParams = separateParameters(params)
 
@@ -224,17 +268,18 @@ class BenchmarkProcess:
         print2("")
         print2("####################################################################")
         print1("# Benchmark Final")
-        benchmarkStep = BenchmarkStep( \
-                self.multiValueParams, \
-                self.singleValueParams, \
-                self.paramGroups, \
-                self.customKernels, \
-                self.internalSupportParams, \
-                self.problemSizes, \
-                self.biasTypesArgs, \
-                self.biasDimArgs, \
-                self.activationArgs, \
-                self.benchmarkStepIdx)
+        benchmarkStep = BenchmarkStep(
+            self.multiValueParams,
+            self.singleValueParams,
+            self.paramGroups,
+            self.customKernels,
+            self.internalSupportParams,
+            self.problemSizes,
+            self.biasTypesArgs,
+            self.biasDimArgs,
+            self.activationArgs,
+            self.benchmarkStepIdx,
+        )
         self.benchmarkSteps.append(benchmarkStep)
         self.benchmarkStepIdx += 1
 
@@ -294,7 +339,19 @@ def constructForkPermutations(forkParams, paramGroups):
 class BenchmarkStep:
     """A single benchmark step which consists of constant and fork parameters and a set of sizes"""
 
-    def __init__(self, forkParams, constantParams, paramGroups, customKernels, internalSupportParams, problemSizes, biasTypeArgs, biasDimArgs, activationArgs, idx):
+    def __init__(
+        self,
+        forkParams,
+        constantParams,
+        paramGroups,
+        customKernels,
+        internalSupportParams,
+        problemSizes,
+        biasTypeArgs,
+        biasDimArgs,
+        activationArgs,
+        idx,
+    ):
         """Basic constructor storing each argument"""
         self.forkParams = forkParams
         self.constantParams = constantParams
@@ -312,8 +369,11 @@ class BenchmarkStep:
             self.customKernels = getAllCustomKernelNames()
             self.customKernelWildcard = True
 
-        print2("# Creating BenchmarkStep: {} fork params and {} sizes" \
-                .format( len(forkParams), problemSizes.totalProblemSizes))
+        print2(
+            "# Creating BenchmarkStep: {} fork params and {} sizes".format(
+                len(forkParams), problemSizes.totalProblemSizes
+            )
+        )
 
     def isFinal(self):
         """Legacy. Currently always returns true since only one benchmark step is possible"""

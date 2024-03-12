@@ -25,6 +25,7 @@
 from ..TensileInstructions import DataType, Module
 from ..Component import Component, MAC
 
+
 class FMA_F64_Plain(MAC):
     asmCaps = {"v_fma_f64": True}
     kernel = {"ProblemType": {"DataType": DataType(DataType.double)}}
@@ -45,11 +46,19 @@ class FMA_F64_Plain(MAC):
                 vars["a"] = a
                 for iui in range(0, innerUnroll):
                     vars["iui"] = iui
-                    cStr        = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2:(vgprValuC+{a}+{b}*{ThreadTile0})*2+1]".format_map(vars)
-                    aStr        = "v[vgprValuA_X{m}_I{iui}+{a}*2:vgprValuA_X{m}_I{iui}+{a}*2+1]".format_map(vars)
-                    bStr        = "v[vgprValuB_X{m}_I{iui}+{b}*2:vgprValuB_X{m}_I{iui}+{b}*2+1]".format_map(vars)
+                    cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2:(vgprValuC+{a}+{b}*{ThreadTile0})*2+1]".format_map(
+                        vars
+                    )
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}*2:vgprValuA_X{m}_I{iui}+{a}*2+1]".format_map(
+                        vars
+                    )
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}*2:vgprValuB_X{m}_I{iui}+{b}*2+1]".format_map(
+                        vars
+                    )
                     module.addInst("v_fma_f64", cStr, aStr, bStr, cStr, "")
-                    module.add(priority(writer, 1, "Raise priority while processing macs"))
+                    module.add(
+                        priority(writer, 1, "Raise priority while processing macs")
+                    )
 
         module.add(priority(writer, 0, "Reset priority after macs"))
         return module

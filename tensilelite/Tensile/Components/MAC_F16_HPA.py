@@ -25,12 +25,16 @@
 from ..TensileInstructions import DataType, Module
 from ..Component import Component, MAC
 
+
 class FMA_F16_HPA_MAD_MIX(MAC):
-    asmCaps = lambda caps: caps['v_mad_mix_f32'] or caps['v_fma_mix_f32']
-    #archCaps = {}
-    kernel = {"ProblemType": {"DataType": DataType(DataType.half),
-                              "HighPrecisionAccumulate": True},
-             }
+    asmCaps = lambda caps: caps["v_mad_mix_f32"] or caps["v_fma_mix_f32"]
+    # archCaps = {}
+    kernel = {
+        "ProblemType": {
+            "DataType": DataType(DataType.half),
+            "HighPrecisionAccumulate": True,
+        },
+    }
 
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.states.kernel
@@ -55,8 +59,8 @@ class FMA_F16_HPA_MAD_MIX(MAC):
         vars["Half_ThreadTile0"] = kernel["ThreadTile0"] // 2
         vars["Half_ThreadTile1"] = kernel["ThreadTile1"] // 2
 
-        for block1 in range(0, kernel["ThreadTile1"]//2):
-            for block0 in range(0, kernel["ThreadTile0"]//2):
+        for block1 in range(0, kernel["ThreadTile1"] // 2):
+            for block0 in range(0, kernel["ThreadTile0"] // 2):
                 for iui in range(0, innerUnroll):
                     vars["block0"] = block0
                     vars["block1"] = block1
@@ -67,31 +71,97 @@ class FMA_F16_HPA_MAD_MIX(MAC):
                     vars["aBase"] = "vgprValuA_X{m}_I{iui}".format_map(vars)
                     vars["bBase"] = "vgprValuB_X{m}_I{iui}".format_map(vars)
 
-                    vars["cIdxExpr"] = "{block0}*2 + {block1}*{ThreadTile0}*2 + 0*2 + 0".format_map(vars)
+                    vars[
+                        "cIdxExpr"
+                    ] = "{block0}*2 + {block1}*{ThreadTile0}*2 + 0*2 + 0".format_map(
+                        vars
+                    )
                     cidx = eval(vars["cIdxExpr"])
-                    cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
+                    cStr = "v[vgprValuC + {cIdxExpr}]".format_map(
+                        vars
+                    )  # *2 b/c of fp32
                     aStr = "v[{aBase}+{blockA}]".format_map(vars)
                     bStr = "v[{bBase}+{blockB}]".format_map(vars)
-                    module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[0,0,0]", "op_sel_hi:[1,1,0]", "ValuC[%u] iui=%u" % (cidx, vars["iui"]))
+                    module.addInst(
+                        instruction,
+                        cStr,
+                        aStr,
+                        bStr,
+                        cStr,
+                        "op_sel:[0,0,0]",
+                        "op_sel_hi:[1,1,0]",
+                        "ValuC[%u] iui=%u" % (cidx, vars["iui"]),
+                    )
 
-                    module.add(priority(writer, 1, "Raise priority while processing macs"))
+                    module.add(
+                        priority(writer, 1, "Raise priority while processing macs")
+                    )
 
-                    vars["cIdxExpr"] = "{block0}*2 + {block1}*{ThreadTile0}*2 + 0*2 + 1".format_map(vars)
-                    cidx  = eval(vars["cIdxExpr"])
-                    cStr  = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
-                    opSel = "op_sel:[1,0,0]" if writer.tPA["tileIdx"] == 0 else "op_sel:[0,1,0]"
-                    module.addInst(instruction, cStr, aStr, bStr, cStr, opSel, "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
+                    vars[
+                        "cIdxExpr"
+                    ] = "{block0}*2 + {block1}*{ThreadTile0}*2 + 0*2 + 1".format_map(
+                        vars
+                    )
+                    cidx = eval(vars["cIdxExpr"])
+                    cStr = "v[vgprValuC + {cIdxExpr}]".format_map(
+                        vars
+                    )  # *2 b/c of fp32
+                    opSel = (
+                        "op_sel:[1,0,0]"
+                        if writer.tPA["tileIdx"] == 0
+                        else "op_sel:[0,1,0]"
+                    )
+                    module.addInst(
+                        instruction,
+                        cStr,
+                        aStr,
+                        bStr,
+                        cStr,
+                        opSel,
+                        "op_sel_hi:[1,1,0]",
+                        "ValuC[%u]" % cidx,
+                    )
 
-                    vars["cIdxExpr"] = "{block0}*2 + {block1}*{ThreadTile0}*2 + {Half_ThreadTile0}*2 + 0".format_map(vars)
-                    cidx  = eval(vars["cIdxExpr"])
-                    cStr  = "v[vgprValuC+{cIdxExpr}]".format_map(vars)
-                    opSel = "op_sel:[0,1,0]" if writer.tPA["tileIdx"] == 0 else "op_sel:[1,0,0]"
-                    module.addInst(instruction, cStr, aStr, bStr, cStr, opSel, "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
-
-                    vars["cIdxExpr"] = "{block0}*2+{block1}*{ThreadTile0}*2+{Half_ThreadTile0}*2+1".format_map(vars)
+                    vars[
+                        "cIdxExpr"
+                    ] = "{block0}*2 + {block1}*{ThreadTile0}*2 + {Half_ThreadTile0}*2 + 0".format_map(
+                        vars
+                    )
                     cidx = eval(vars["cIdxExpr"])
                     cStr = "v[vgprValuC+{cIdxExpr}]".format_map(vars)
-                    module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[1,1,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
+                    opSel = (
+                        "op_sel:[0,1,0]"
+                        if writer.tPA["tileIdx"] == 0
+                        else "op_sel:[1,0,0]"
+                    )
+                    module.addInst(
+                        instruction,
+                        cStr,
+                        aStr,
+                        bStr,
+                        cStr,
+                        opSel,
+                        "op_sel_hi:[1,1,0]",
+                        "ValuC[%u]" % cidx,
+                    )
+
+                    vars[
+                        "cIdxExpr"
+                    ] = "{block0}*2+{block1}*{ThreadTile0}*2+{Half_ThreadTile0}*2+1".format_map(
+                        vars
+                    )
+                    cidx = eval(vars["cIdxExpr"])
+                    cStr = "v[vgprValuC+{cIdxExpr}]".format_map(vars)
+                    module.addInst(
+                        instruction,
+                        cStr,
+                        aStr,
+                        bStr,
+                        cStr,
+                        "op_sel:[1,1,0]",
+                        "op_sel_hi:[1,1,0]",
+                        "ValuC[%u]" % cidx,
+                    )
 
         module.add(priority(writer, 0, "Reset priority after macs"))
 

@@ -25,11 +25,14 @@
 from ..Component import Component
 from ..TensileInstructions import SSetPrior
 
+
 class Priority(Component):
     """
     Raise/lower workgroup priority.
     """
+
     pass
+
 
 class AggressivePriority(Priority):
     """

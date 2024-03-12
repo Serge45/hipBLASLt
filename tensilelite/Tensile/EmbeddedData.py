@@ -27,6 +27,7 @@ from . import Common
 import itertools
 import os
 
+
 class Namespace:
     def __init__(self, parent, name=None):
         self.parent = parent
@@ -47,6 +48,7 @@ class Namespace:
         else:
             self.parent.write("}} // namespace {}".format(self.name))
 
+
 class Indent:
     def __init__(self, parent):
         self.parent = parent
@@ -56,6 +58,7 @@ class Indent:
 
     def __exit__(self, *args, **kwargs):
         self.parent.dedent()
+
 
 class EmbeddedDataFile:
     def __init__(self, filename, file=None, indent_spaces=4):
@@ -67,7 +70,7 @@ class EmbeddedDataFile:
 
         self.file = file
         if self.file is None:
-            self.file = open(filename, 'w')
+            self.file = open(filename, "w")
 
         self.write_header()
 
@@ -91,9 +94,17 @@ class EmbeddedDataFile:
     def end_namespace(self, name=None):
         ns = self._open_blocks.pop()
         if not isinstance(ns, Namespace):
-            raise RuntimeError("Mismatched block types: expected Namespace, found {}".format(ns.__class__))
+            raise RuntimeError(
+                "Mismatched block types: expected Namespace, found {}".format(
+                    ns.__class__
+                )
+            )
         if name != ns.name:
-            raise RuntimeError("Mismatched namespace open/close: expected {}, found {}".format(name, ns.name))
+            raise RuntimeError(
+                "Mismatched namespace open/close: expected {}, found {}".format(
+                    name, ns.name
+                )
+            )
 
         ns.__exit__(None, None, None)
 
@@ -119,19 +130,19 @@ class EmbeddedDataFile:
 
     def get_lines(self, item):
         if isinstance(item, str):
-            return item.split('\n')
+            return item.split("\n")
 
-        if hasattr(item, '__iter__'):
+        if hasattr(item, "__iter__"):
             return item
 
-        return str(item).split('\n')
+        return str(item).split("\n")
 
     def format(self, item):
         out_lines = []
         for line in self.get_lines(item):
             out_lines.append(self.apply_indent(line))
 
-        return '\n'.join(out_lines) + '\n'
+        return "\n".join(out_lines) + "\n"
 
     @property
     def indent_level(self):
@@ -142,14 +153,14 @@ class EmbeddedDataFile:
 
     def apply_indent(self, line=None):
         if line is None:
-            return ' ' * self.indent_level
+            return " " * self.indent_level
 
         line = line.strip()
 
-        if line.startswith('#'):
+        if line.startswith("#"):
             return line
 
-        return (' ' * self.indent_level) + line
+        return (" " * self.indent_level) + line
 
     def indent(self, spaces=None):
         if spaces is None:
@@ -165,10 +176,10 @@ class EmbeddedDataFile:
             self.file.write(self.format(item))
 
     def comment(self, text):
-        self.write(['// ' + line for line in text.split('\n')])
+        self.write(["// " + line for line in text.split("\n")])
 
     def write_footer(self):
-        self.write('')
+        self.write("")
 
     def embed_data(self, assocType, data, nullTerminated=False, comment=None, key=None):
         if nullTerminated:
@@ -183,17 +194,31 @@ class EmbeddedDataFile:
                 self.comment(comment)
             if empty:
                 if key is None:
-                    self.write("EmbedData<{0}> TENSILE_EMBED_SYMBOL_NAME{{}};".format(assocType))
+                    self.write(
+                        "EmbedData<{0}> TENSILE_EMBED_SYMBOL_NAME{{}};".format(
+                            assocType
+                        )
+                    )
                 else:
-                    self.write('EmbedData<{0}> TENSILE_EMBED_SYMBOL_NAME("{1}", {{}});'.format(assocType, key))
+                    self.write(
+                        'EmbedData<{0}> TENSILE_EMBED_SYMBOL_NAME("{1}", {{}});'.format(
+                            assocType, key
+                        )
+                    )
                 return
 
-            hex_format = '{:#04x}'
+            hex_format = "{:#04x}"
 
             if key is None:
-                self.write("EmbedData<{0}> TENSILE_EMBED_SYMBOL_NAME({{".format(assocType))
+                self.write(
+                    "EmbedData<{0}> TENSILE_EMBED_SYMBOL_NAME({{".format(assocType)
+                )
             else:
-                self.write('EmbedData<{0}> TENSILE_EMBED_SYMBOL_NAME("{1}", {{'.format(assocType, key))
+                self.write(
+                    'EmbedData<{0}> TENSILE_EMBED_SYMBOL_NAME("{1}", {{'.format(
+                        assocType, key
+                    )
+                )
             with self.indent():
                 line = hex_format.format(next(data))
                 for byteIdx, byte in enumerate(data):
@@ -201,12 +226,13 @@ class EmbeddedDataFile:
                         self.write(line + ",")
                         line = hex_format.format(byte)
                     else:
-                        line += ', ' + hex_format.format(byte)
+                        line += ", " + hex_format.format(byte)
 
-                self.write(line + '});')
+                self.write(line + "});")
 
     def embed_file(self, assocType, filename, nullTerminated=False, key=None):
-        with open(filename, 'rb') as f:
-          byteArray = bytearray(f.read())
-        self.embed_data(assocType, byteArray, nullTerminated, os.path.basename(filename), key)
-
+        with open(filename, "rb") as f:
+            byteArray = bytearray(f.read())
+        self.embed_data(
+            assocType, byteArray, nullTerminated, os.path.basename(filename), key
+        )

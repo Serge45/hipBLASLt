@@ -22,53 +22,56 @@
 
 from enum import Enum
 
+
 class SignatureValueKind(Enum):
-    SIG_VALUE        = 1
+    SIG_VALUE = 1
     SIG_GLOBALBUFFER = 2
 
+
 class InstType(Enum):
-    INST_F8         = 1
-    INST_F16        = 2
-    INST_F32        = 3
-    INST_F64        = 4
-    INST_I8         = 5
-    INST_I16        = 6
-    INST_I32        = 7
-    INST_U8         = 8
-    INST_U16        = 9
-    INST_U32        = 10
-    INST_U64        = 11
-    INST_LO_I32     = 12
-    INST_HI_I32     = 13
-    INST_LO_U32     = 14
-    INST_HI_U32     = 15
-    INST_BF16       = 16
-    INST_B8         = 17
-    INST_B16        = 18
-    INST_B32        = 19
-    INST_B64        = 20
-    INST_B128       = 21
-    INST_B256       = 22
-    INST_B512       = 23
-    INST_B8_HI_D16  = 24
-    INST_D16_U8     = 25
-    INST_D16_HI_U8  = 26
-    INST_D16_U16    = 27
+    INST_F8 = 1
+    INST_F16 = 2
+    INST_F32 = 3
+    INST_F64 = 4
+    INST_I8 = 5
+    INST_I16 = 6
+    INST_I32 = 7
+    INST_U8 = 8
+    INST_U16 = 9
+    INST_U32 = 10
+    INST_U64 = 11
+    INST_LO_I32 = 12
+    INST_HI_I32 = 13
+    INST_LO_U32 = 14
+    INST_HI_U32 = 15
+    INST_BF16 = 16
+    INST_B8 = 17
+    INST_B16 = 18
+    INST_B32 = 19
+    INST_B64 = 20
+    INST_B128 = 21
+    INST_B256 = 22
+    INST_B512 = 23
+    INST_B8_HI_D16 = 24
+    INST_D16_U8 = 25
+    INST_D16_HI_U8 = 26
+    INST_D16_U16 = 27
     INST_D16_HI_U16 = 28
-    INST_D16_B8     = 29
-    INST_D16_HI_B8  = 30
-    INST_D16_B16    = 31
+    INST_D16_B8 = 29
+    INST_D16_HI_B8 = 30
+    INST_D16_B16 = 31
     INST_D16_HI_B16 = 32
-    INST_XF32       = 33
-    INST_BF8        = 34
-    INST_F8_BF8     = 35
-    INST_BF8_F8     = 36
-    INST_CVT        = 37
-    INST_MACRO      = 38
-    INST_NOTYPE     = 39
+    INST_XF32 = 33
+    INST_BF8 = 34
+    INST_F8_BF8 = 35
+    INST_BF8_F8 = 36
+    INST_CVT = 37
+    INST_MACRO = 38
+    INST_NOTYPE = 39
+
 
 class SelectBit(Enum):
-    DWORD  = 1
+    DWORD = 1
     BYTE_0 = 2
     BYTE_1 = 3
     BYTE_2 = 4
@@ -76,24 +79,27 @@ class SelectBit(Enum):
     WORD_0 = 6
     WORD_1 = 7
 
+
 class UnusedBit(Enum):
-    UNUSED_PAD      = 1
-    UNUSED_SEXT     = 2
+    UNUSED_PAD = 1
+    UNUSED_SEXT = 2
     UNUSED_PRESERVE = 3
 
+
 class CvtType(Enum):
-    CVT_F16_to_F32    =  1
-    CVT_F32_to_F16    =  2
-    CVT_U32_to_F32    =  3
-    CVT_F32_to_U32    =  4
-    CVT_I32_to_F32    =  5
-    CVT_F32_to_I32    =  6
-    CVT_FP8_to_F32    =  7
-    CVT_BF8_to_F32    =  8
-    CVT_PK_FP8_to_F32 =  9
+    CVT_F16_to_F32 = 1
+    CVT_F32_to_F16 = 2
+    CVT_U32_to_F32 = 3
+    CVT_F32_to_U32 = 4
+    CVT_I32_to_F32 = 5
+    CVT_F32_to_I32 = 6
+    CVT_FP8_to_F32 = 7
+    CVT_BF8_to_F32 = 8
+    CVT_PK_FP8_to_F32 = 9
     CVT_PK_BF8_to_F32 = 10
     CVT_PK_F32_to_FP8 = 11
     CVT_PK_F32_to_BF8 = 12
+
 
 class RoundType(Enum):
     ROUND_UP = 0

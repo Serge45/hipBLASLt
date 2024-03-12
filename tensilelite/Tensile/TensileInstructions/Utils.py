@@ -40,11 +40,12 @@ import string
 # Format GPRs
 ########################################
 
+
 def _gpr(*args):
     gprType = args[0]
     args = args[1]
     if isinstance(args[0], Holder):
-        idx  = args[0].idx
+        idx = args[0].idx
         name = args[0].name
         if len(args) == 1:
             return HolderContainer(gprType, name, idx, 1)
@@ -62,19 +63,24 @@ def _gpr(*args):
         elif len(args) == 2:
             return RegisterContainer(gprType, name, None, args[1])
     else:
-        printAssert("Unknown %sgpr name or index"%gprType)
+        printAssert("Unknown %sgpr name or index" % gprType)
+
 
 def vgpr(*args):
     return _gpr("v", args)
 
+
 def sgpr(*args):
     return _gpr("s", args)
+
 
 def accvgpr(*args):
     return _gpr("acc", args)
 
+
 def mgpr(*args):
     return _gpr("m", args)
+
 
 @lru_cache(maxsize=None)
 def _generateRegName(rawText):
@@ -85,63 +91,78 @@ def _generateRegName(rawText):
             offsets.append(int(arg))
     return RegName(splitTxt[0], offsets)
 
+
 class Holder:
     def __init__(self, idx=None, name=None):
         if name:
             self.name = _generateRegName(name)
-            assert(idx == None)
+            assert idx == None
         else:
             self.name = name
-            assert(name == None)
-        self.idx    = idx
+            assert name == None
+        self.idx = idx
+
 
 ########################################
 # mfma
 ########################################
 
+
 def dataTypeNameAbbrevToInstType(abbrev: str, sourceSwap: bool = False) -> InstType:
-    if abbrev == 'f64':
+    if abbrev == "f64":
         return InstType.INST_F64
-    elif abbrev == 'f32':
+    elif abbrev == "f32":
         return InstType.INST_F32
-    elif abbrev == 'f16':
+    elif abbrev == "f16":
         return InstType.INST_F16
-    elif abbrev == 'i32':
+    elif abbrev == "i32":
         return InstType.INST_I32
-    elif abbrev == 'i8':
+    elif abbrev == "i8":
         return InstType.INST_I8
-    elif abbrev == 'bf16':
+    elif abbrev == "bf16":
         return InstType.INST_BF16
-    elif abbrev == 'xf32':
+    elif abbrev == "xf32":
         return InstType.INST_XF32
-    elif abbrev == 'fp8_fp8':
+    elif abbrev == "fp8_fp8":
         return InstType.INST_F8
-    elif abbrev == 'bf8_bf8':
+    elif abbrev == "bf8_bf8":
         return InstType.INST_BF8
-    elif (abbrev == 'fp8_bf8' and sourceSwap == False) or \
-        (abbrev == 'bf8_fp8' and sourceSwap == True):
+    elif (abbrev == "fp8_bf8" and sourceSwap == False) or (
+        abbrev == "bf8_fp8" and sourceSwap == True
+    ):
         return InstType.INST_F8_BF8
-    elif (abbrev == 'bf8_fp8' and sourceSwap == False) or \
-        (abbrev == 'fp8_bf8' and sourceSwap == True):
+    elif (abbrev == "bf8_fp8" and sourceSwap == False) or (
+        abbrev == "fp8_bf8" and sourceSwap == True
+    ):
         return InstType.INST_BF8_F8
     else:
-        assert("Unsupported data type.")
+        assert "Unsupported data type."
     return InstType.INST_NOTYPE
 
-def dataTypeToMfmaInstTypePair(dataType: DataType, sourceSwap: bool) -> Tuple[InstType, InstType]:
-    miInTypeStr  = dataType.toNameAbbrev()
-    miInInstType = dataTypeNameAbbrevToInstType(miInTypeStr, sourceSwap) # v_mfma_[...xK]<InType>
-    miOutInstType = dataTypeNameAbbrevToInstType(dataType.MIOutputTypeNameAbbrev()) # v_mfma_<OutType>..
+
+def dataTypeToMfmaInstTypePair(
+    dataType: DataType, sourceSwap: bool
+) -> Tuple[InstType, InstType]:
+    miInTypeStr = dataType.toNameAbbrev()
+    miInInstType = dataTypeNameAbbrevToInstType(
+        miInTypeStr, sourceSwap
+    )  # v_mfma_[...xK]<InType>
+    miOutInstType = dataTypeNameAbbrevToInstType(
+        dataType.MIOutputTypeNameAbbrev()
+    )  # v_mfma_<OutType>..
     return miInInstType, miOutInstType
+
 
 ########################################
 # Label Manager
 ########################################
 
-def magicGenerator(chars=(string.ascii_uppercase + string.digits)):
-    return ''.join(random.choice(chars) for _ in range(16))
 
-class LabelManager():
+def magicGenerator(chars=(string.ascii_uppercase + string.digits)):
+    return "".join(random.choice(chars) for _ in range(16))
+
+
+class LabelManager:
     def __init__(self):
         self.labelDict = dict()
 
@@ -180,17 +201,22 @@ class LabelManager():
 
     def getNameIndex(self, name, index):
         if name not in self.labelDict:
-            printExit("You have to add a label first to get a label name with specific index.")
+            printExit(
+                "You have to add a label first to get a label name with specific index."
+            )
         if index > self.labelDict[name]:
-            printExit("The index %u exceeded. (> %u)"%(index, self.labelDict[name]))
+            printExit("The index %u exceeded. (> %u)" % (index, self.labelDict[name]))
         return name + "_" + str(index)
+
 
 ########################################
 # Math
 ########################################
 
+
 def log2(x):
     return int(log(x, 2) + 0.5)
+
 
 def ceilDivide(numerator, denominator):
     # import pdb
@@ -202,18 +228,21 @@ def ceilDivide(numerator, denominator):
         print("ERROR: Can't have a negative register value")
         return 0
     try:
-        div = int((numerator+denominator-1) // denominator)
+        div = int((numerator + denominator - 1) // denominator)
     except ZeroDivisionError:
         print("ERROR: Divide by 0")
         return 0
     return div
 
+
 def roundUpToNearestMultiple(numerator, denominator):
-    return ceilDivide(numerator,denominator)*int(denominator)
+    return ceilDivide(numerator, denominator) * int(denominator)
+
 
 ########################################
 # Others
 ########################################
+
 
 def replaceHolder(module, dst):
     if isinstance(module, Module):
@@ -225,7 +254,7 @@ def replaceHolder(module, dst):
                 param.setRegNum(dst)
                 param = param.getCopiedRC()
     elif isinstance(module, SWaitCnt):
-        assert(isinstance(dst, int))
+        assert isinstance(dst, int)
         if isinstance(module.vmcnt, HolderContainer):
             module.vmcnt = module.vmcnt.holderIdx + dst
         if isinstance(module.lgkmcnt, HolderContainer):
@@ -235,33 +264,45 @@ def replaceHolder(module, dst):
 
     return module
 
-def getAsmCompileArgs(assemblerPath: str, codeObjectVersion: str, \
-    isa: Tuple[int, int, int], wavefrontSize: int, \
-    sourceFileName: str, objectFileName: str, *moreArgs, debug: bool=False):
-    launcher = shlex.split(os.environ.get('Tensile_ASM_COMPILER_LAUNCHER', ''))
-    rv = launcher + [assemblerPath, '-x', 'assembler', '-target', 'amdgcn-amd-amdhsa']
 
-    rv += ['-mcode-object-version=%s'% getCOVFromParam(codeObjectVersion)]
+def getAsmCompileArgs(
+    assemblerPath: str,
+    codeObjectVersion: str,
+    isa: Tuple[int, int, int],
+    wavefrontSize: int,
+    sourceFileName: str,
+    objectFileName: str,
+    *moreArgs,
+    debug: bool = False
+):
+    launcher = shlex.split(os.environ.get("Tensile_ASM_COMPILER_LAUNCHER", ""))
+    rv = launcher + [assemblerPath, "-x", "assembler", "-target", "amdgcn-amd-amdhsa"]
 
-    rv += ['-mcpu=' + getGfxName(isa)]
+    rv += ["-mcode-object-version=%s" % getCOVFromParam(codeObjectVersion)]
+
+    rv += ["-mcpu=" + getGfxName(isa)]
 
     if wavefrontSize == 64:
-        rv += ['-mwavefrontsize64']
+        rv += ["-mwavefrontsize64"]
     else:
-        rv += ['-mno-wavefrontsize64']
+        rv += ["-mno-wavefrontsize64"]
 
     rv += moreArgs
 
     if debug:
-        rv += ['-g',]
+        rv += [
+            "-g",
+        ]
 
-    rv += ['-c', '-o', objectFileName, sourceFileName]
+    rv += ["-c", "-o", objectFileName, sourceFileName]
     return rv
 
-def getAsmLinkCodeObjectArgs(assemblerPath: str, objectFileNames: List[str], \
-    coFileName: str, *moreArgs):
-    rv = [assemblerPath, '-target', 'amdgcn-amd-amdhsa']
+
+def getAsmLinkCodeObjectArgs(
+    assemblerPath: str, objectFileNames: List[str], coFileName: str, *moreArgs
+):
+    rv = [assemblerPath, "-target", "amdgcn-amd-amdhsa"]
     rv += ["-Xlinker", "--build-id"]
     rv += moreArgs
-    rv += ['-o', coFileName] + objectFileNames
+    rv += ["-o", coFileName] + objectFileNames
     return rv

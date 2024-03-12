@@ -25,14 +25,17 @@
 from ..TensileInstructions import DataType, Module
 from ..Component import Component, MAC
 
+
 class MAC_F32_Plain(MAC):
     """
     Plain MAC instruction implementation
     """
+
     @staticmethod
     def asmCaps(caps):
         return caps["v_mac_f32"] or caps["v_fma_f32"]
-    #archCaps = {}
+
+    # archCaps = {}
     kernel = {"ProblemType": {"DataType": DataType(DataType.single)}}
 
     def __call__(self, writer, m, innerUnroll):
@@ -45,10 +48,16 @@ class MAC_F32_Plain(MAC):
         elif writer.states.asmCaps["v_mac_f32"]:
             instruction = "v_mac_f32"
         else:
-            raise RuntimeError("FMA and MAC instructions are not supported on {}".format(kernel["ISA"]))
+            raise RuntimeError(
+                "FMA and MAC instructions are not supported on {}".format(kernel["ISA"])
+            )
 
         if not writer.states.asmCaps[instruction]:
-            raise RuntimeError("{} instruction specified but not supported on {}".format(instruction, kernel["ISA"]))
+            raise RuntimeError(
+                "{} instruction specified but not supported on {}".format(
+                    instruction, kernel["ISA"]
+                )
+            )
 
         module = Module("MAC_F32_Plain")
         module.addComment(self.commentHeader())
@@ -74,7 +83,9 @@ class MAC_F32_Plain(MAC):
                     vars["b"] = idx1 if writer.tPB["tile01Idx"] else idx0
                     vars["iui"] = iui
 
-                    cStr = "v[vgprValuC + {idx0} + {idx1}*{ThreadTile0}]".format_map(vars)
+                    cStr = "v[vgprValuC + {idx0} + {idx1}*{ThreadTile0}]".format_map(
+                        vars
+                    )
                     aStr = "v[vgprValuA_X{m}_I{iui} + {a}]".format_map(vars)
                     bStr = "v[vgprValuB_X{m}_I{iui} + {b}]".format_map(vars)
 
@@ -83,7 +94,9 @@ class MAC_F32_Plain(MAC):
                     else:
                         module.addInst(instruction, cStr, aStr, bStr, "")
 
-                    module.add(priority(writer, 1, "Raise priority while processing macs"))
+                    module.add(
+                        priority(writer, 1, "Raise priority while processing macs")
+                    )
 
         module.add(priority(writer, 0, "Reset priority after macs"))
 

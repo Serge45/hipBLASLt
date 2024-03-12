@@ -35,10 +35,13 @@ from Tensile.Utilities.merge import mergePartialLogics
 try:
     import mgzip as gzip
 except ImportError:
-    print("Package mgzip not found: docker zipping will be slow. Install pip3 install mgzip to improve performance.")
+    print(
+        "Package mgzip not found: docker zipping will be slow. Install pip3 install mgzip to improve performance."
+    )
 
     # Fallback package import
     import gzip
+
 
 class BenchmarkImplSLURM(object):
 
@@ -48,7 +51,16 @@ class BenchmarkImplSLURM(object):
     # outDir: where to export the new image
     # tensile<Fork/Branch/Commit>: tensile code to use on github
     @staticmethod
-    def __createTensileBenchmarkContainer(baseImage, dockerFilePath, tag, outDir, logDir, tensileFork, tensileBranch, tensileCommit):
+    def __createTensileBenchmarkContainer(
+        baseImage,
+        dockerFilePath,
+        tag,
+        outDir,
+        logDir,
+        tensileFork,
+        tensileBranch,
+        tensileCommit,
+    ):
         """
         Build a docker container with a specific
         ROCm image, Tensile branch and tag. Docker
@@ -56,10 +68,11 @@ class BenchmarkImplSLURM(object):
         configure the container to run the benchmark.
         """
         # Save stdout and stderr to file
-        with open(os.path.join(logDir, "dockerBuildLog.log"), 'w') as logFile:
+        with open(os.path.join(logDir, "dockerBuildLog.log"), "w") as logFile:
 
             # Docker build command
-            buildCmd = str("\
+            buildCmd = str(
+                "\
                 docker build \
                 -t {0} \
                 --pull -f {1} \
@@ -68,7 +81,15 @@ class BenchmarkImplSLURM(object):
                 --build-arg tensile_fork={3} \
                 --build-arg tensile_branch={4} \
                 --build-arg tensile_commit={5} \
-                . ").format(tag, dockerFilePath, baseImage, tensileFork, tensileBranch, tensileCommit)
+                . "
+            ).format(
+                tag,
+                dockerFilePath,
+                baseImage,
+                tensileFork,
+                tensileBranch,
+                tensileCommit,
+            )
 
             # Build container and save output streams
             print("Building docker image: {0} ...".format(tag))
@@ -77,7 +98,7 @@ class BenchmarkImplSLURM(object):
             print("Done building docker image!")
 
             # Docker save command
-            imageBaseName = tag.split(':')[0]
+            imageBaseName = tag.split(":")[0]
             archivePath = os.path.join(outDir, imageBaseName + str(".tar.gz"))
             saveCmd = str("docker save {0}").format(tag)
 
@@ -85,14 +106,18 @@ class BenchmarkImplSLURM(object):
             # Pipe stdout into gzip to get smaller .tar.gz archive
             print("Saving docker image: {0}  to {1} ...".format(tag, archivePath))
 
-            with gzip.open(archivePath, 'wb') as zipFile:
-                with subprocess.Popen(shlex.split(saveCmd), stdout=subprocess.PIPE, stderr=logFile) as proc:
+            with gzip.open(archivePath, "wb") as zipFile:
+                with subprocess.Popen(
+                    shlex.split(saveCmd), stdout=subprocess.PIPE, stderr=logFile
+                ) as proc:
                     zipFile.write(proc.stdout.read())
 
             print("Done saving docker image!")
 
     @staticmethod
-    def __createClusterBenchmarkScripts(baseDir, tasksDir, taskScriptName, jobScriptName):
+    def __createClusterBenchmarkScripts(
+        baseDir, tasksDir, taskScriptName, jobScriptName
+    ):
         """
         Build SLURM specific scripts.
         Entrypoint is the 'sbatch' command, which will request resources and
@@ -111,7 +136,9 @@ class BenchmarkImplSLURM(object):
 
         # Move each individual config into it's own subfolder and create the node host script
         # These scripts are NOT SLURM specific but rely on the implementation of the executable.
-        configFiles = [f for f in os.listdir(tasksDir) if os.path.isfile(os.path.join(tasksDir, f))]
+        configFiles = [
+            f for f in os.listdir(tasksDir) if os.path.isfile(os.path.join(tasksDir, f))
+        ]
         for f in configFiles:
             (baseFileName, _) = os.path.splitext(f)
             configSubdir = os.path.join(tasksDir, baseFileName)
@@ -141,8 +168,14 @@ class BenchmarkImplSLURM(object):
 
         # Docker build
         section = baseSection.createSection("DOCKER")
-        section.createValue("DockerBaseImage", "compute-artifactory.amd.com:5000/rocm-plus-docker/compute-rocm-dkms-amd-feature-targetid:3004-STG1")
-        section.createValue("DockerBuildFile", os.path.join(rootTensileDir, "docker", "dockerfile-tensile-tuning-slurm"))
+        section.createValue(
+            "DockerBaseImage",
+            "compute-artifactory.amd.com:5000/rocm-plus-docker/compute-rocm-dkms-amd-feature-targetid:3004-STG1",
+        )
+        section.createValue(
+            "DockerBuildFile",
+            os.path.join(rootTensileDir, "docker", "dockerfile-tensile-tuning-slurm"),
+        )
         section.createValue("DockerImageName", "tensile-tuning-cluster-executable")
         section.createValue("DockerImageTag", "TEST")
         section.createValue("TensileFork", "ROCmSoftwarePlatform")
@@ -156,32 +189,32 @@ class BenchmarkImplSLURM(object):
         based on configuration parameters
         """
         # Dirs
-        (baseDir, tasksDir, imageDir, logsDir) = \
-            (config["BenchmarkBaseDir"], \
-            config["BenchmarkTasksDir"], \
-            config["BenchmarkImageDir"], \
-            config["BenchmarkLogsDir"])
+        (baseDir, tasksDir, imageDir, logsDir) = (
+            config["BenchmarkBaseDir"],
+            config["BenchmarkTasksDir"],
+            config["BenchmarkImageDir"],
+            config["BenchmarkLogsDir"],
+        )
 
         # Create the base image for task executable in image dir
         sConfig = config["SLURM"]["DOCKER"]
-        cls.__createTensileBenchmarkContainer( \
-            sConfig["DockerBaseImage"], \
-            sConfig["DockerBuildFile"], \
-            "{0}:{1}".format(sConfig["DockerImageName"], sConfig["DockerImageTag"]), \
-            imageDir, \
-            logsDir, \
-            sConfig["TensileFork"], \
-            sConfig["TensileBranch"], \
-            sConfig["TensileCommit"])
+        cls.__createTensileBenchmarkContainer(
+            sConfig["DockerBaseImage"],
+            sConfig["DockerBuildFile"],
+            "{0}:{1}".format(sConfig["DockerImageName"], sConfig["DockerImageTag"]),
+            imageDir,
+            logsDir,
+            sConfig["TensileFork"],
+            sConfig["TensileBranch"],
+            sConfig["TensileCommit"],
+        )
 
         # Create the scripts that will be used to invoke the benchmark in base dir
         # Create the scripts that node hosts will run in the tasks dir
         sConfig = config["SLURM"]["SCRIPTS"]
-        cls.__createClusterBenchmarkScripts( \
-            baseDir, \
-            tasksDir, \
-            sConfig["TaskScriptName"], \
-            sConfig["JobScriptName"])
+        cls.__createClusterBenchmarkScripts(
+            baseDir, tasksDir, sConfig["TaskScriptName"], sConfig["JobScriptName"]
+        )
 
     @classmethod
     def preInvokeBenchmark(cls, config):
@@ -191,12 +224,13 @@ class BenchmarkImplSLURM(object):
     def invokeBenchmark(cls, config):
 
         # Dirs
-        (baseDir, tasksDir, imageDir, resultsDir, logsDir) = \
-            (config["BenchmarkBaseDir"], \
-            config["BenchmarkTasksDir"], \
-            config["BenchmarkImageDir"], \
-            config["BenchmarkResultsDir"], \
-            config["BenchmarkLogsDir"])
+        (baseDir, tasksDir, imageDir, resultsDir, logsDir) = (
+            config["BenchmarkBaseDir"],
+            config["BenchmarkTasksDir"],
+            config["BenchmarkImageDir"],
+            config["BenchmarkResultsDir"],
+            config["BenchmarkLogsDir"],
+        )
 
         # Entry point script
         scriptName = config["SLURM"]["SCRIPTS"]["JobScriptName"]
@@ -210,16 +244,22 @@ class BenchmarkImplSLURM(object):
         (name, ext) = os.path.splitext(scriptName)
         logFilePath = os.path.join(logsDir, name + ".log")
 
-        invokeCmd = str("\
+        invokeCmd = str(
+            "\
                 {0} \
                 -i {1} \
                 -l {2} \
                 -r {3} \
                 -s {4} \
-                -t {5}").format(runScriptPath, imageDir, logsDir, resultsDir, enqueueScriptPath, tasksDir)
+                -t {5}"
+        ).format(
+            runScriptPath, imageDir, logsDir, resultsDir, enqueueScriptPath, tasksDir
+        )
 
         with open(logFilePath, "wt") as logFile:
-            subprocess.check_call(shlex.split(invokeCmd), stdout=logFile, stderr=logFile)
+            subprocess.check_call(
+                shlex.split(invokeCmd), stdout=logFile, stderr=logFile
+            )
 
     @classmethod
     def postInvokeBenchmark(cls, benchmarkObj):
@@ -258,7 +298,6 @@ class TensileBenchmarkCluster(object):
         self.__initializeConfig(cmdlineArgs)
 
     def __initializeConfig(self, cmdlineArgs):
-
         """
         Initialize configuration parameters needed
         to build and run the benchmark.
@@ -269,23 +308,49 @@ class TensileBenchmarkCluster(object):
 
         # 2. Setup default configurations that depend on inputs
         # Directories
-        self._config.createValue("RootTensileDir", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        self._config.createValue(
+            "RootTensileDir",
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
         self._config.createValue("BenchmarkLogicPath", args.BenchmarkLogicPath)
         self._config.createValue("BenchmarkBaseDir", args.DeploymentPath)
-        self._config.createValue("BenchmarkTasksDir", os.path.join(args.DeploymentPath, "Tasks"))
-        self._config.createValue("BenchmarkImageDir", os.path.join(args.DeploymentPath, "Image"))
-        self._config.createValue("BenchmarkResultsDir", os.path.join(args.DeploymentPath, "Results"))
-        self._config.createValue("BenchmarkFinalLogicDir", os.path.join(args.DeploymentPath, "Results", "Final"))
-        self._config.createValue("BenchmarkLogsDir", os.path.join(args.DeploymentPath, "Logs"))
+        self._config.createValue(
+            "BenchmarkTasksDir", os.path.join(args.DeploymentPath, "Tasks")
+        )
+        self._config.createValue(
+            "BenchmarkImageDir", os.path.join(args.DeploymentPath, "Image")
+        )
+        self._config.createValue(
+            "BenchmarkResultsDir", os.path.join(args.DeploymentPath, "Results")
+        )
+        self._config.createValue(
+            "BenchmarkFinalLogicDir",
+            os.path.join(args.DeploymentPath, "Results", "Final"),
+        )
+        self._config.createValue(
+            "BenchmarkLogsDir", os.path.join(args.DeploymentPath, "Logs")
+        )
 
         # Benchmarking
-        self._config.createValue("BenchmarkTaskSize", 10) # Sizes per benchmark file
+        self._config.createValue("BenchmarkTaskSize", 10)  # Sizes per benchmark file
         self._config.addConstraint("BenchmarkTaskSize > 0")
 
-        self._config.createValue("RunDeployStep", True and (not args.RunOnly and not args.ResultsOnly and not args.RunAndResultsOnly))
-        self._config.createValue("RunBenchmarkStep", True and (not args.DeployOnly and not args.ResultsOnly))
-        self._config.createValue("RunResultsStep", True and (not args.DeployOnly and not args.RunOnly))
-        self._config.addConstraint("RunDeployStep or RunBenchmarkStep or RunResultsStep")
+        self._config.createValue(
+            "RunDeployStep",
+            True
+            and (
+                not args.RunOnly and not args.ResultsOnly and not args.RunAndResultsOnly
+            ),
+        )
+        self._config.createValue(
+            "RunBenchmarkStep", True and (not args.DeployOnly and not args.ResultsOnly)
+        )
+        self._config.createValue(
+            "RunResultsStep", True and (not args.DeployOnly and not args.RunOnly)
+        )
+        self._config.addConstraint(
+            "RunDeployStep or RunBenchmarkStep or RunResultsStep"
+        )
 
         # Results merging settings
         self._config.createValue("FinalLogicForceMerge", False)
@@ -324,14 +389,55 @@ class TensileBenchmarkCluster(object):
 
         # Parse incoming args
         argParser = argparse.ArgumentParser()
-        argParser.add_argument("BenchmarkLogicPath",     help="Path to benchmark config .yaml files.")
-        argParser.add_argument("DeploymentPath",         help="Where to deploy benchmarking files. Should target a directory on shared nfs mount of cluster.")
-        argParser.add_argument("--cluster-backend",      dest="ClusterBackend", type=str, default="slurm", help="Choose backend plugin to run benchmark")
-        argParser.add_argument("--deploy-only",          dest="DeployOnly", action="store_true", default=False, help="Deploy benchmarking files only without running or reducing results")
-        argParser.add_argument("--run-only",             dest="RunOnly", action="store_true", default=False, help="Run benchmark without deploying or reducing results")
-        argParser.add_argument("--results-only",         dest="ResultsOnly", action="store_true", default=False, help="Reduce results without deploying or running")
-        argParser.add_argument("--run-and-results-only", dest="RunAndResultsOnly", action="store_true", default=False, help="Run benchmark and reduce results without deploying")
-        argParser.add_argument("--benchmark-parameters", nargs="+", type=splitExtraParameters, default=[], help="Pairs of X=Y assignments. Note: if Y is a string, then it must have escaped quotes \\\"Y\\\"")
+        argParser.add_argument(
+            "BenchmarkLogicPath", help="Path to benchmark config .yaml files."
+        )
+        argParser.add_argument(
+            "DeploymentPath",
+            help="Where to deploy benchmarking files. Should target a directory on shared nfs mount of cluster.",
+        )
+        argParser.add_argument(
+            "--cluster-backend",
+            dest="ClusterBackend",
+            type=str,
+            default="slurm",
+            help="Choose backend plugin to run benchmark",
+        )
+        argParser.add_argument(
+            "--deploy-only",
+            dest="DeployOnly",
+            action="store_true",
+            default=False,
+            help="Deploy benchmarking files only without running or reducing results",
+        )
+        argParser.add_argument(
+            "--run-only",
+            dest="RunOnly",
+            action="store_true",
+            default=False,
+            help="Run benchmark without deploying or reducing results",
+        )
+        argParser.add_argument(
+            "--results-only",
+            dest="ResultsOnly",
+            action="store_true",
+            default=False,
+            help="Reduce results without deploying or running",
+        )
+        argParser.add_argument(
+            "--run-and-results-only",
+            dest="RunAndResultsOnly",
+            action="store_true",
+            default=False,
+            help="Run benchmark and reduce results without deploying",
+        )
+        argParser.add_argument(
+            "--benchmark-parameters",
+            nargs="+",
+            type=splitExtraParameters,
+            default=[],
+            help='Pairs of X=Y assignments. Note: if Y is a string, then it must have escaped quotes \\"Y\\"',
+        )
         return argParser.parse_args()
 
     def __overrideConfig(self, args):
@@ -343,7 +449,11 @@ class TensileBenchmarkCluster(object):
         for key in args:
             value = args[key]
             if key not in self._config:
-                print("Warning: Benchmark parameter {0} = {1} unrecognised.".format( key, value ))
+                print(
+                    "Warning: Benchmark parameter {0} = {1} unrecognised.".format(
+                        key, value
+                    )
+                )
             else:
                 self._config[key] = value
 
@@ -361,11 +471,12 @@ class TensileBenchmarkCluster(object):
 
         # Split master config into smaller task-sized configs
         # These are stored under the tasks dir
-        BenchmarkSplitter.splitBenchmarkBySizes( \
-            self._config["BenchmarkLogicPath"], \
-            self.tasksDir(), \
-            self._config["BenchmarkTaskSize"], \
-            suffixFormat="{:04d}") # Support lots of jobs up to 9999
+        BenchmarkSplitter.splitBenchmarkBySizes(
+            self._config["BenchmarkLogicPath"],
+            self.tasksDir(),
+            self._config["BenchmarkTaskSize"],
+            suffixFormat="{:04d}",
+        )  # Support lots of jobs up to 9999
 
         # Delegate to the backend implementation to generate everything it needs for the benchmark run
         self._backendImpl.generateBenchmark(self._config)
@@ -391,30 +502,42 @@ class TensileBenchmarkCluster(object):
 
         # Find the partial logic .yaml files
         # These are in each result directory under 3_LibraryLogic
-        resultsDirs = [os.path.join(resultsDir, d, "3_LibraryLogic") for d in os.listdir(resultsDir) if os.path.isdir(os.path.join(resultsDir, d, "3_LibraryLogic"))]
+        resultsDirs = [
+            os.path.join(resultsDir, d, "3_LibraryLogic")
+            for d in os.listdir(resultsDir)
+            if os.path.isdir(os.path.join(resultsDir, d, "3_LibraryLogic"))
+        ]
 
         resultsFiles = []
         for d in resultsDirs:
-            resultsFiles += [os.path.join(d, f) for f in os.listdir(d) if os.path.isfile(os.path.join(d, f)) ]
+            resultsFiles += [
+                os.path.join(d, f)
+                for f in os.listdir(d)
+                if os.path.isfile(os.path.join(d, f))
+            ]
 
         if len(resultsDirs) != len(resultsFiles):
-            print("Warning: inconsistent number of expected results. Check that results are complete.")
+            print(
+                "Warning: inconsistent number of expected results. Check that results are complete."
+            )
 
         mergePartialLogics(
-            resultsFiles, \
-            finalLogicDir, \
-            self._config["FinalLogicForceMerge"], \
-            self._config["FinalLogicTrim"])
+            resultsFiles,
+            finalLogicDir,
+            self._config["FinalLogicForceMerge"],
+            self._config["FinalLogicTrim"],
+        )
 
     def workflowSteps(self):
         """
         Helper function to easily receive a tuple of important
         workflow step indicators
         """
-        return( \
-            self._config["RunDeployStep"], \
-            self._config["RunBenchmarkStep"], \
-            self._config["RunResultsStep"])
+        return (
+            self._config["RunDeployStep"],
+            self._config["RunBenchmarkStep"],
+            self._config["RunResultsStep"],
+        )
 
     def config(self):
         return self._config
@@ -452,7 +575,6 @@ class TensileBenchmarkCluster(object):
         return path
 
     def main(self):
-
         """
         Main driver for benchmark:
         - Deploy
@@ -480,6 +602,7 @@ class TensileBenchmarkCluster(object):
             print("Final logic file saved to: {0}".format(self.finalLogicDir()))
 
         print("Finished")
+
 
 def main():
     entryPoint = TensileBenchmarkCluster(sys.argv[1:])

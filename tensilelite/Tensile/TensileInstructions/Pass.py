@@ -23,13 +23,25 @@
 from .Base import Item
 from .Code import KernelBody, Label, Macro, Module, RegSet, TextBlock
 from .Containers import RegisterContainer
-from .Instructions import BranchInstruction, CommonInstruction, Instruction, \
-                          CompositeInstruction, MacroInstruction, \
-                          ReadWriteInstruction, SEndpgm, SMovB32, \
-                          _SWaitCnt, _SWaitCntVscnt, SSleep, SBarrier, SNop
+from .Instructions import (
+    BranchInstruction,
+    CommonInstruction,
+    Instruction,
+    CompositeInstruction,
+    MacroInstruction,
+    ReadWriteInstruction,
+    SEndpgm,
+    SMovB32,
+    _SWaitCnt,
+    _SWaitCntVscnt,
+    SSleep,
+    SBarrier,
+    SNop,
+)
 from .Formatting import slash50
 
 from dataclasses import dataclass, field
+
 
 @dataclass
 class TensileInstructionsPassOptions:
@@ -38,8 +50,10 @@ class TensileInstructionsPassOptions:
     def doOpt(self) -> bool:
         return self.removeDupAssign
 
-def TensileInstructionsPass(kernelBody: KernelBody, \
-    options: TensileInstructionsPassOptions):
+
+def TensileInstructionsPass(
+    kernelBody: KernelBody, options: TensileInstructionsPassOptions
+):
     module = kernelBody.body
     assignDict = getAssignmentDict(module)
     compositeToInstruction(module)
@@ -50,9 +64,11 @@ def TensileInstructionsPass(kernelBody: KernelBody, \
         if options.removeDupAssign:
             removeDuplicateAssignment(graph)
 
+
 #######################################
 # Setup
 #######################################
+
 
 def compositeToInstruction(module):
     itemList = []
@@ -66,10 +82,12 @@ def compositeToInstruction(module):
         itemList.append(item)
     module.setItems(itemList)
 
+
 def getAssignmentDict(module):
     assignmentDict = dict()
     _getAssignmentDictIter(module, assignmentDict)
     return assignmentDict
+
 
 def buildGraph(module, vgprMax, sgprMax, assignmentDict):
     graph = dict()
@@ -79,8 +97,10 @@ def buildGraph(module, vgprMax, sgprMax, assignmentDict):
     _recordGraph(module, graph, assignmentDict)
     return graph
 
+
 def removeDuplicateAssignment(graph):
     _removeDuplicateAssignmentGPR(graph, "s")
+
 
 # No opt item container class
 class NoOptItem:
@@ -90,6 +110,7 @@ class NoOptItem:
     def getItem(self) -> Item:
         return self._item
 
+
 ################################################################################
 ################################################################################
 ###
@@ -97,6 +118,7 @@ class NoOptItem:
 ###
 ################################################################################
 ################################################################################
+
 
 def _getAssignmentDictIter(module, assignmentDict):
     for item in module.items():
@@ -109,6 +131,7 @@ def _getAssignmentDictIter(module, assignmentDict):
             else:
                 num = item.value
             assignmentDict[item.name] = num
+
 
 def _addRegToGraph(item, assignmentDict, params: list, graph, noOpt):
     for p in params:
@@ -125,18 +148,35 @@ def _addRegToGraph(item, assignmentDict, params: list, graph, noOpt):
                 else:
                     graph[p.regType][i].append(item)
 
+
 def _recordGraph(module, graph, assignmentDict):
     for item in module.items():
         if isinstance(item, Module):
             _recordGraph(item, graph, assignmentDict)
-        elif isinstance(item, (CommonInstruction, ReadWriteInstruction, MacroInstruction)):
-            _addRegToGraph(item, assignmentDict, item.getParams(), graph, module.isNoOpt())
-        elif isinstance(item, (BranchInstruction, Label, _SWaitCnt, _SWaitCntVscnt, \
-                            SEndpgm, SBarrier, SNop, SSleep)):
+        elif isinstance(
+            item, (CommonInstruction, ReadWriteInstruction, MacroInstruction)
+        ):
+            _addRegToGraph(
+                item, assignmentDict, item.getParams(), graph, module.isNoOpt()
+            )
+        elif isinstance(
+            item,
+            (
+                BranchInstruction,
+                Label,
+                _SWaitCnt,
+                _SWaitCntVscnt,
+                SEndpgm,
+                SBarrier,
+                SNop,
+                SSleep,
+            ),
+        ):
             for i in range(len(graph["v"])):
                 graph["v"][i].append(item)
             for i in range(len(graph["s"])):
                 graph["s"][i].append(item)
+
 
 # Currently only removes s_mov_b32, does not support 2 sgpr at lvalue
 def _removeDuplicateAssignmentGPR(graph, regType):
@@ -145,22 +185,31 @@ def _removeDuplicateAssignmentGPR(graph, regType):
         newList = []
         for item in sList:
             isRemoved = False
-            if isinstance(item, (NoOptItem, BranchInstruction, Label, MacroInstruction, \
-                                _SWaitCnt, _SWaitCntVscnt)):
-               assignValue = None
+            if isinstance(
+                item,
+                (
+                    NoOptItem,
+                    BranchInstruction,
+                    Label,
+                    MacroInstruction,
+                    _SWaitCnt,
+                    _SWaitCntVscnt,
+                ),
+            ):
+                assignValue = None
             # FIXME: Need refactor.
             elif isinstance(item, SMovB32):
-                gpr      = item.dst
+                gpr = item.dst
                 gprValue = item.srcs
                 if gpr.regIdx == idx and gprValue == assignValue:
                     if item.comment:
                         comment = item.comment + " (dup assign opt.)"
                         newItem = TextBlock(slash50(comment))
-                        module  = item.parent
-                        module.replaceItem(item, newItem) # type: ignore
+                        module = item.parent
+                        module.replaceItem(item, newItem)  # type: ignore
                     else:
                         module = item.parent
-                        module.removeItem(item) # type: ignore
+                        module.removeItem(item)  # type: ignore
                     isRemoved = True
                 assignValue = gprValue
             elif isinstance(item, Instruction):
@@ -178,6 +227,7 @@ def _removeDuplicateAssignmentGPR(graph, regType):
         if len(newList) != len(sList):
             graph["s"][idx] = newList
 
+
 ################################################################################
 ################################################################################
 ###
@@ -186,9 +236,10 @@ def _removeDuplicateAssignmentGPR(graph, regType):
 ################################################################################
 ################################################################################
 
+
 # Find ".set AAAAA 0" and convert "s[AAAAA]" into "s0"
 def _setName2RegNum(gpr, assignmentDict):
-    assert(isinstance(gpr, RegisterContainer))
+    assert isinstance(gpr, RegisterContainer)
     if gpr.regIdx == None and gpr.regName:
         name = gpr.getRegNameWithType()
         num = assignmentDict[name] + gpr.regName.getTotalOffsets()
@@ -198,8 +249,9 @@ def _setName2RegNum(gpr, assignmentDict):
         RegNumList.append(i + gpr.regIdx)
     return RegNumList
 
+
 def _graphDebugSaveToTxt(graph, kernelName):
-    f = open('%s.txt' % kernelName, 'w')
+    f = open("%s.txt" % kernelName, "w")
     f.write("VGPR\n")
     i = 0
     for d in graph["v"]:

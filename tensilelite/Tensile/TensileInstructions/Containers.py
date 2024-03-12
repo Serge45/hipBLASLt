@@ -29,9 +29,11 @@ from dataclasses import dataclass
 from typing import List, Optional
 import math
 
+
 class Container(Item):
     def __init__(self) -> None:
         super().__init__("Container")
+
 
 @dataclass
 class DSModifiers(Container):
@@ -54,20 +56,21 @@ class DSModifiers(Container):
     def __str__(self) -> str:
         kStr = ""
         if self.na == 1:
-            kStr += " offset:%u"%self.offset
+            kStr += " offset:%u" % self.offset
         elif self.na == 2:
-            kStr += " offset0:%u offset1:%u"%(self.offset0, self.offset1)
+            kStr += " offset0:%u offset1:%u" % (self.offset0, self.offset1)
         if self.gds:
             kStr += " gds"
         return kStr
 
+
 @dataclass
 class FLATModifiers(Container):
-    offset12: int  = 0
-    glc:      bool = False
-    slc:      bool = False
-    lds:      bool = False
-    isStore:  bool = False
+    offset12: int = 0
+    glc: bool = False
+    slc: bool = False
+    lds: bool = False
+    isStore: bool = False
 
     def __post_init__(self):
         super().__init__()
@@ -81,7 +84,7 @@ class FLATModifiers(Container):
         forceStoreSC1 = self.archCaps["ForceStoreSC1"] and self.isStore
         kStr = ""
         if self.offset12 != 0:
-            kStr += " offset:%u"%self.offset12
+            kStr += " offset:%u" % self.offset12
         if self.glc or forceStoreSC1:
             kStr += " " + getGlcBitName(hasGLCModifier)
         if self.slc or forceStoreSC1:
@@ -90,15 +93,16 @@ class FLATModifiers(Container):
             kStr += " lds"
         return kStr
 
+
 @dataclass
 class MUBUFModifiers(Container):
-    offen:    bool = False
-    offset12: int  = 0
-    glc:      bool = False
-    slc:      bool = False
-    nt:       bool = False
-    lds:      bool = False
-    isStore:  bool = False
+    offen: bool = False
+    offset12: int = 0
+    glc: bool = False
+    slc: bool = False
+    nt: bool = False
+    lds: bool = False
+    isStore: bool = False
 
     def __post_init__(self):
         super().__init__()
@@ -112,8 +116,8 @@ class MUBUFModifiers(Container):
         forceStoreSC1 = self.archCaps["ForceStoreSC1"] and self.isStore
         kStr = ""
         if self.offen:
-            kStr += " offen offset:%u"%self.offset12
-        if (self.glc or self.slc or self.lds or forceStoreSC1):
+            kStr += " offen offset:%u" % self.offset12
+        if self.glc or self.slc or self.lds or forceStoreSC1:
             kStr += ","
         if self.glc or forceStoreSC1:
             kStr += " " + getGlcBitName(hasGLCModifier)
@@ -125,11 +129,12 @@ class MUBUFModifiers(Container):
             kStr += " lds"
         return kStr
 
+
 @dataclass
 class SMEMModifiers(Container):
-    glc:      bool = False
-    nv:       bool = False
-    offset: int    = 0 # 20u 21s shaes the same
+    glc: bool = False
+    nv: bool = False
+    offset: int = 0  # 20u 21s shaes the same
 
     def __post_init__(self):
         super().__init__()
@@ -141,19 +146,20 @@ class SMEMModifiers(Container):
     def __str__(self) -> str:
         kStr = ""
         if self.offset != 0:
-            kStr += " offset:%d"%self.offset
+            kStr += " offset:%d" % self.offset
         if self.glc:
             kStr += " glc"
         if self.nv:
             kStr += " nv"
         return kStr
 
+
 @dataclass
 class SDWAModifiers(Container):
-    dst_sel:    Optional[SelectBit] = None
+    dst_sel: Optional[SelectBit] = None
     dst_unused: Optional[UnusedBit] = None
-    src0_sel:   Optional[SelectBit] = None
-    src1_sel:   Optional[SelectBit] = None
+    src0_sel: Optional[SelectBit] = None
+    src1_sel: Optional[SelectBit] = None
 
     def __post_init__(self):
         super().__init__()
@@ -182,10 +188,11 @@ class SDWAModifiers(Container):
             kStr += " src1_sel:" + self.src1_sel.name
         return kStr
 
+
 @dataclass
 class VOP3PModifiers(Container):
-    op_sel:     Optional[List[int]] = None
-    op_sel_hi:  Optional[List[int]] = None
+    op_sel: Optional[List[int]] = None
+    op_sel_hi: Optional[List[int]] = None
 
     def __post_init__(self):
         super().__init__()
@@ -206,6 +213,7 @@ class VOP3PModifiers(Container):
             kStr += " op_sel_hi:" + str(self.op_sel_hi).replace(" ", "")
         return kStr
 
+
 class EXEC(Container):
     def __init__(self, setHi=False) -> None:
         super().__init__()
@@ -216,6 +224,7 @@ class EXEC(Container):
             return "exec"
         else:
             return "exec_lo"
+
 
 class VCC(Container):
     def __init__(self, setHi=False) -> None:
@@ -228,6 +237,7 @@ class VCC(Container):
         else:
             return "vcc_hi" if self.setHi else "vcc_lo"
 
+
 class HWRegContainer(Container):
     def __init__(self, reg: str, value: List[int]) -> None:
         super().__init__()
@@ -238,7 +248,7 @@ class HWRegContainer(Container):
         s = "hwreg("
         s += self.reg
         for v in self.value:
-            s += ("," + str(v))
+            s += "," + str(v)
         s += ")"
         return s
 
@@ -247,9 +257,10 @@ class HWRegContainer(Container):
 # The class below does not inherit Item
 ########################################
 class RegName:
-    __slots__ = ('name', 'offsets')
+    __slots__ = ("name", "offsets")
+
     def __init__(self, name, offsets: List[int]):
-        self.name    = name
+        self.name = name
         self.offsets = offsets
 
     def getTotalOffsets(self):
@@ -263,7 +274,7 @@ class RegName:
         cls = self.__class__
         result = cls.__new__(cls)
         memo[id(self)] = result
-        result.name    = self.name
+        result.name = self.name
         result.offsets = deepcopy(self.offsets)
         return result
 
@@ -282,19 +293,21 @@ class RegName:
         ss = self.name
         if self.offsets:
             for i in self.offsets:
-                ss += "+%u"%i
+                ss += "+%u" % i
         return ss
 
+
 class RegisterContainer:
-    __slots__ = ('regType', 'regName', 'regIdx', 'regNum', 'isInlineAsm', 'isMinus')
+    __slots__ = ("regType", "regName", "regIdx", "regNum", "isInlineAsm", "isMinus")
+
     def __init__(self, regType, regName, regIdx, regNum) -> None:
         self.regType = regType
-        self.regIdx  = regIdx
-        self.regNum  = int(math.ceil(regNum))
+        self.regIdx = regIdx
+        self.regNum = int(math.ceil(regNum))
         self.regName = regName
 
         self.isInlineAsm = False
-        self.isMinus     = False
+        self.isMinus = False
 
     def setInlineAsm(self, setting):
         self.isInlineAsm = setting
@@ -310,7 +323,7 @@ class RegisterContainer:
     def replaceRegName(self, srcName, dst):
         if self.regName:
             if isinstance(dst, int):
-                if self.regName.name == srcName: # Exact match
+                if self.regName.name == srcName:  # Exact match
                     self.regIdx = dst + self.regName.offset
                     self.regName = None
                 else:
@@ -318,28 +331,28 @@ class RegisterContainer:
             elif isinstance(dst, str):
                 self.regName.name = self.regName.name.replace(srcName, dst)
             else:
-                assert("Dst type unknown %s" % str(type(dst)) and 0)
+                assert "Dst type unknown %s" % str(type(dst)) and 0
 
     # This get the name without offsets
     def getRegNameWithType(self):
-        assert(self.regName)
+        assert self.regName
         return "%sgpr%s" % (self.regType, str(self.regName.name))
 
     # This get the name with offsets
     def getCompleteRegNameWithType(self):
-        assert(self.regName)
+        assert self.regName
         return "%sgpr%s" % (self.regType, str(self.regName))
 
     def splitRegContainer(self):
         if self.regName:
-            regName  = deepcopy(self.regName)
+            regName = deepcopy(self.regName)
             regName2 = deepcopy(self.regName)
             regName2.offsets.append(1)
-            regIdx2  = None
+            regIdx2 = None
         else:
-            regName  = None
+            regName = None
             regName2 = None
-            regIdx2  = self.regIdx + 1
+            regIdx2 = self.regIdx + 1
         r1 = RegisterContainer(self.regType, regName, self.regIdx, 1)
         r2 = RegisterContainer(self.regType, regName2, regIdx2, 1)
         return r1, r2
@@ -348,19 +361,23 @@ class RegisterContainer:
         cls = self.__class__
         result = cls.__new__(cls)
         memo[id(self)] = result
-        result.regType     = self.regType
-        result.regIdx      = self.regIdx
-        result.regNum      = self.regNum
-        result.regName     = deepcopy(self.regName)
+        result.regType = self.regType
+        result.regIdx = self.regIdx
+        result.regNum = self.regNum
+        result.regName = deepcopy(self.regName)
         result.isInlineAsm = self.isInlineAsm
-        result.isMinus     = self.isMinus
+        result.isMinus = self.isMinus
         return result
 
     def __eq__(self, o) -> bool:
         if not isinstance(o, RegisterContainer):
             return False
         # FIXME: should compare only with regIdx
-        isSame = (self.regName == o.regName) if (self.regIdx == None) else (self.regIdx == o.regIdx)
+        isSame = (
+            (self.regName == o.regName)
+            if (self.regIdx == None)
+            else (self.regIdx == o.regIdx)
+        )
         return (self.regType == o.regType) and isSame and (self.regNum == o.regNum)
 
     def __key(self) -> tuple:
@@ -372,36 +389,64 @@ class RegisterContainer:
     def __str__(self) -> str:
         minusStr = "-" if self.isMinus else ""
         if self.isInlineAsm:
-            assert(self.regName == None)
+            assert self.regName == None
             return "%s%%%d" % (minusStr, self.regIdx)
 
         if self.regName:
             if self.regNum == 1:
-                return "%s%s[%sgpr%s]"%(minusStr, self.regType, self.regType, str(self.regName))
+                return "%s%s[%sgpr%s]" % (
+                    minusStr,
+                    self.regType,
+                    self.regType,
+                    str(self.regName),
+                )
             else:
-                return "%s%s[%sgpr%s:%sgpr%s+%u]"%(minusStr, self.regType, self.regType, str(self.regName), \
-                        self.regType, str(self.regName), self.regNum-1)
+                return "%s%s[%sgpr%s:%sgpr%s+%u]" % (
+                    minusStr,
+                    self.regType,
+                    self.regType,
+                    str(self.regName),
+                    self.regType,
+                    str(self.regName),
+                    self.regNum - 1,
+                )
         else:
             if self.regNum == 1:
                 return "%s%s%u" % (minusStr, self.regType, self.regIdx)
             else:
-                return "%s%s[%u:%u]" % (minusStr, self.regType, self.regIdx, self.regIdx+self.regNum-1)
+                return "%s%s[%u:%u]" % (
+                    minusStr,
+                    self.regType,
+                    self.regIdx,
+                    self.regIdx + self.regNum - 1,
+                )
+
 
 class HolderContainer(RegisterContainer):
-    __slots__ = ('regType', 'regName', 'regIdx', 'regNum', 'isInlineAsm', 'isMinus', \
-        'holderName', 'holderIdx', 'holderType')
+    __slots__ = (
+        "regType",
+        "regName",
+        "regIdx",
+        "regNum",
+        "isInlineAsm",
+        "isMinus",
+        "holderName",
+        "holderIdx",
+        "holderType",
+    )
+
     def __init__(self, regType, holderName, holderIdx, regNum) -> None:
         super().__init__(regType, None, None, regNum)
         if holderIdx != None:
-            assert(holderName == None)
-            self.holderIdx    = holderIdx
-            self.holderName   = None
-            self.holderType   = 0
+            assert holderName == None
+            self.holderIdx = holderIdx
+            self.holderName = None
+            self.holderType = 0
         else:
-            assert(holderIdx == None)
-            self.holderIdx    = None
-            self.holderName   = holderName
-            self.holderType   = 1
+            assert holderIdx == None
+            self.holderIdx = None
+            self.holderName = holderName
+            self.holderType = 1
 
     def setRegNum(self, num):
         if self.holderType == 0:
@@ -412,28 +457,28 @@ class HolderContainer(RegisterContainer):
 
     def getCopiedRC(self):
         if self.holderType == 0:
-            assert(self.regIdx != None)
+            assert self.regIdx != None
         elif self.holderType == 1:
-            assert(self.regName != None)
+            assert self.regName != None
         return RegisterContainer(self.regType, self.regName, self.regIdx, self.regNum)
 
     def splitRegContainer(self):
         if self.holderName:
-            holderName  = deepcopy(self.holderName)
+            holderName = deepcopy(self.holderName)
             holderName2 = deepcopy(self.holderName)
             holderName2.offsets.append(1)
-            holderIdx2  = None
+            holderIdx2 = None
         else:
-            holderName  = None
+            holderName = None
             holderName2 = None
-            holderIdx2  = self.holderIdx + 1
+            holderIdx2 = self.holderIdx + 1
         r1 = HolderContainer(self.regType, holderName, self.holderIdx, 1)
         r2 = HolderContainer(self.regType, holderName2, holderIdx2, 1)
         return r1, r2
 
     def __deepcopy__(self, memo):
         result = super().__deepcopy__(memo)
-        result.holderIdx  = self.holderIdx
+        result.holderIdx = self.holderIdx
         result.holderName = self.holderName
         result.holderType = self.holderType
         return result

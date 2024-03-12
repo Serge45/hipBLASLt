@@ -32,6 +32,7 @@ from ..Activation import ActivationType
 from math import ceil
 from dataclasses import dataclass, field
 
+
 @dataclass
 class UserArgumentsInfo:
     # variable related fixed parameters
@@ -57,8 +58,9 @@ class UserArgumentsInfo:
 
     def __post_init__(self):
         self.alphaMaxRegisterSize = self.alphaMaxSize // 4
-        self.betaMaxRegisterSize  = self.betaMaxSize // 4
-        self.actMaxRegisterSize   = self.actMaxSize // 4
+        self.betaMaxRegisterSize = self.betaMaxSize // 4
+        self.actMaxRegisterSize = self.actMaxSize // 4
+
 
 def getSrcValueType(kernel, isTypeA):
     # special cases for F8 datatypes
@@ -79,6 +81,7 @@ def getSrcValueType(kernel, isTypeA):
     srcValueType = srcValueType.lower()
     return srcValueType
 
+
 def getDstValueType(kernel):
     # special cases for F8 datatypes
     if kernel["ProblemType"]["DataType"].isFloat8():
@@ -91,9 +94,9 @@ def getDstValueType(kernel):
     dstValueType = dstValueType.lower()
     return dstValueType
 
+
 # Creates kernel header, compatible with code object version 4 and up. V2 and V3 no longer supported.
 class SignatureDefault(Signature):
-
     def __call__(self, writer) -> SignatureBase:
         kernel = writer.states.kernel
 
@@ -101,176 +104,216 @@ class SignatureDefault(Signature):
 
         # kern arg size
         kernArgReg = 0
-        kernArgReg += 3*writer.states.rpga
-        kernArgReg += max(1,int(writer.states.bpeAB/4)) # alpha
+        kernArgReg += 3 * writer.states.rpga
+        kernArgReg += max(1, int(writer.states.bpeAB / 4))  # alpha
         if kernel["ProblemType"]["UseBeta"]:
-            kernArgReg += max(1,int(writer.states.bpeCexternal/4)) # beta
-        kernArgReg += kernel["ProblemType"]["NumIndicesC"] # strides
-        kernArgReg += kernel["ProblemType"]["NumIndicesC"] # strides
-        kernArgReg += len(kernel["ProblemType"]["IndexAssignmentsA"]) # strides
-        kernArgReg += len(kernel["ProblemType"]["IndexAssignmentsB"]) # strides
+            kernArgReg += max(1, int(writer.states.bpeCexternal / 4))  # beta
+        kernArgReg += kernel["ProblemType"]["NumIndicesC"]  # strides
+        kernArgReg += kernel["ProblemType"]["NumIndicesC"]  # strides
+        kernArgReg += len(kernel["ProblemType"]["IndexAssignmentsA"])  # strides
+        kernArgReg += len(kernel["ProblemType"]["IndexAssignmentsB"])  # strides
         if not kernel["ProblemType"]["UseInitialStridesAB"]:
-            kernArgReg -= 2 # strides
+            kernArgReg -= 2  # strides
         if not kernel["ProblemType"]["UseInitialStridesCD"]:
-            kernArgReg -= 2 # strides
+            kernArgReg -= 2  # strides
         kernArgReg += kernel["ProblemType"]["NumIndicesSummation"]
         kernArgReg += kernel["ProblemType"]["NumIndicesC"]
         if globalParameters["DebugKernel"]:
-            kernArgReg += writer.states.rpga # debug buffer
+            kernArgReg += writer.states.rpga  # debug buffer
         # kernArgBytes = kernArgReg * 4 # bytes/reg
 
         group_segment_size = kernel["LdsNumElements"] * writer.states.bpeAB
 
         sgprWgZ = 1 if kernel["ProblemType"]["NumIndicesC"] > 2 else 0
-        signature = SignatureBase(kernelName=writer.states.kernelName,
-                                    codeObjectVersion=getCOVFromParam(kernel["CodeObjectVersion"]),
-                                    groupSegmentSize=group_segment_size,
-                                    sgprWorkGroup=[1, 1, sgprWgZ],
-                                    vgprWorkItem=0,
-                                    flatWorkGroupSize=(kernel["NumThreads"]),
-                                    preloadKernArgs=kernel["PreloadKernArgs"])
+        signature = SignatureBase(
+            kernelName=writer.states.kernelName,
+            codeObjectVersion=getCOVFromParam(kernel["CodeObjectVersion"]),
+            groupSegmentSize=group_segment_size,
+            sgprWorkGroup=[1, 1, sgprWgZ],
+            vgprWorkItem=0,
+            flatWorkGroupSize=(kernel["NumThreads"]),
+            preloadKernArgs=kernel["PreloadKernArgs"],
+        )
 
         srcValueTypeA = getSrcValueType(kernel, True)
         srcValueTypeB = getSrcValueType(kernel, False)
-        dstValueType  = kernel["ProblemType"]["DestDataType"].toNameAbbrev()
-        cptValueType  = kernel["ProblemType"]["ComputeDataType"].toNameAbbrev()
+        dstValueType = kernel["ProblemType"]["DestDataType"].toNameAbbrev()
+        cptValueType = kernel["ProblemType"]["ComputeDataType"].toNameAbbrev()
         biasValueType = "void"
-        actValueType  = kernel["ProblemType"]["ActivationComputeDataType"].toNameAbbrev()
+        actValueType = kernel["ProblemType"]["ActivationComputeDataType"].toNameAbbrev()
 
         for i in range(0, writer.states.numSgprSizesFree):
-            signature.addArg(            "SizesFree%u"%i, SVK.SIG_VALUE,               "u32")
+            signature.addArg("SizesFree%u" % i, SVK.SIG_VALUE, "u32")
             userArgumentsInfo.gemmArgumentSize += 4
 
         for i in range(0, writer.states.numSgprSizesSum):
-            signature.addArg(             "SizesSum%u"%i, SVK.SIG_VALUE,               "u32")
+            signature.addArg("SizesSum%u" % i, SVK.SIG_VALUE, "u32")
             userArgumentsInfo.gemmArgumentSize += 4
 
         # General Argument info
-        signature.addArg(  "Gemm info", SVK.SIG_VALUE, "u32")
+        signature.addArg("Gemm info", SVK.SIG_VALUE, "u32")
         signature.addArg("kernel info", SVK.SIG_VALUE, "u32")
 
         if globalParameters["DebugKernel"]:
             signature.addArg("AddressDbg", SVK.SIG_GLOBALBUFFER, "struct", "generic")
-        signature.addArg(    "D", SVK.SIG_GLOBALBUFFER, dstValueType, "generic")
-        signature.addArg(    "C", SVK.SIG_GLOBALBUFFER, dstValueType, "generic")
-        signature.addArg(    "A", SVK.SIG_GLOBALBUFFER, srcValueTypeA, "generic")
-        signature.addArg(    "B", SVK.SIG_GLOBALBUFFER, srcValueTypeB, "generic")
-        userArgumentsInfo.gemmArgumentSize += (8 + 8 + 8 + 8)  # A, B, C, D buffer
+        signature.addArg("D", SVK.SIG_GLOBALBUFFER, dstValueType, "generic")
+        signature.addArg("C", SVK.SIG_GLOBALBUFFER, dstValueType, "generic")
+        signature.addArg("A", SVK.SIG_GLOBALBUFFER, srcValueTypeA, "generic")
+        signature.addArg("B", SVK.SIG_GLOBALBUFFER, srcValueTypeB, "generic")
+        userArgumentsInfo.gemmArgumentSize += 8 + 8 + 8 + 8  # A, B, C, D buffer
 
         if kernel["ProblemType"]["Sparse"]:
-            signature.addArg("MetaData", SVK.SIG_GLOBALBUFFER, "void" , "generic")
+            signature.addArg("MetaData", SVK.SIG_GLOBALBUFFER, "void", "generic")
 
         for i in range(0, writer.states.d.numSgprStrides):
-            signature.addArg(              "strideD%u"%i, SVK.SIG_VALUE,               "u32")
+            signature.addArg("strideD%u" % i, SVK.SIG_VALUE, "u32")
             userArgumentsInfo.gemmArgumentSize += 4
 
         for i in range(0, writer.states.c.numSgprStrides):
-            signature.addArg(              "strideC%u"%i, SVK.SIG_VALUE,               "u32")
+            signature.addArg("strideC%u" % i, SVK.SIG_VALUE, "u32")
             userArgumentsInfo.gemmArgumentSize += 4
 
         for i in range(0, writer.states.a.numSgprStrides):
-            signature.addArg(              "strideA%u"%i, SVK.SIG_VALUE,               "u32")
+            signature.addArg("strideA%u" % i, SVK.SIG_VALUE, "u32")
             userArgumentsInfo.gemmArgumentSize += 4
 
         for i in range(0, writer.states.b.numSgprStrides):
-            signature.addArg(              "strideB%u"%i, SVK.SIG_VALUE,               "u32")
+            signature.addArg("strideB%u" % i, SVK.SIG_VALUE, "u32")
             userArgumentsInfo.gemmArgumentSize += 4
 
         if kernel["ProblemType"]["Sparse"]:
             for i in range(0, writer.states.m.numSgprStrides):
-                signature.addArg(   "strideMetadata%u"%i, SVK.SIG_VALUE,               "u32")
+                signature.addArg("strideMetadata%u" % i, SVK.SIG_VALUE, "u32")
 
         for idxChar in kernel["PackedC0IdxChars"][:-1]:
-            signature.addArg("MagicNumberSize%s"%idxChar, SVK.SIG_VALUE,               "u32")
-            signature.addArg( "MagicShiftSize%s"%idxChar, SVK.SIG_VALUE,               "u32")
+            signature.addArg("MagicNumberSize%s" % idxChar, SVK.SIG_VALUE, "u32")
+            signature.addArg("MagicShiftSize%s" % idxChar, SVK.SIG_VALUE, "u32")
 
         # Note: We use packed f16 if alpha and beta are f16
-        pack_cptValueType = 'pkf16' if kernel["ProblemType"]["ComputeDataType"].isHalf() else cptValueType
-        signature.addArg(   "alpha",        SVK.SIG_VALUE, pack_cptValueType)
+        pack_cptValueType = (
+            "pkf16"
+            if kernel["ProblemType"]["ComputeDataType"].isHalf()
+            else cptValueType
+        )
+        signature.addArg("alpha", SVK.SIG_VALUE, pack_cptValueType)
         if kernel["ProblemType"]["UseBeta"]:
-            signature.addArg("beta",        SVK.SIG_VALUE, pack_cptValueType)
+            signature.addArg("beta", SVK.SIG_VALUE, pack_cptValueType)
         # These are fixed sizes
         userArgumentsInfo.gemmArgumentSize += userArgumentsInfo.alphaMaxSize
         userArgumentsInfo.gemmArgumentSize += userArgumentsInfo.betaMaxSize
 
         if kernel["ProblemType"]["UseScaleAB"]:
-            signature.addArg("AddressScaleA", SVK.SIG_GLOBALBUFFER, cptValueType, "generic")
-            signature.addArg("AddressScaleB", SVK.SIG_GLOBALBUFFER, cptValueType, "generic")
+            signature.addArg(
+                "AddressScaleA", SVK.SIG_GLOBALBUFFER, cptValueType, "generic"
+            )
+            signature.addArg(
+                "AddressScaleB", SVK.SIG_GLOBALBUFFER, cptValueType, "generic"
+            )
         userArgumentsInfo.scaleASize += 8
         userArgumentsInfo.scaleBSize += 8
         if kernel["ProblemType"]["UseScaleCD"]:
-            signature.addArg("AddressScaleC", SVK.SIG_GLOBALBUFFER, cptValueType, "generic")
-            signature.addArg("AddressScaleD", SVK.SIG_GLOBALBUFFER, cptValueType, "generic")
+            signature.addArg(
+                "AddressScaleC", SVK.SIG_GLOBALBUFFER, cptValueType, "generic"
+            )
+            signature.addArg(
+                "AddressScaleD", SVK.SIG_GLOBALBUFFER, cptValueType, "generic"
+            )
         userArgumentsInfo.scaleCSize += 8
         userArgumentsInfo.scaleDSize += 8
 
         if kernel["ProblemType"]["UseScaleAlphaVec"]:
-            signature.addArg("AddressScaleAlphaVec", SVK.SIG_GLOBALBUFFER, cptValueType, "generic")
+            signature.addArg(
+                "AddressScaleAlphaVec", SVK.SIG_GLOBALBUFFER, cptValueType, "generic"
+            )
         userArgumentsInfo.scaleAlphaVecSize += 8
 
         if writer.states.useBias != DataDirection.NONE:
-            signature.addArg("bias", SVK.SIG_GLOBALBUFFER, biasValueType, "generic")  # Note: We append the data in ws_d
+            signature.addArg(
+                "bias", SVK.SIG_GLOBALBUFFER, biasValueType, "generic"
+            )  # Note: We append the data in ws_d
             if writer.states.needBiasType:
-                signature.addArg("biasType",        SVK.SIG_VALUE,        "u32")
-                signature.addArg("StrideBias",      SVK.SIG_VALUE,        "u32")
+                signature.addArg("biasType", SVK.SIG_VALUE, "u32")
+                signature.addArg("StrideBias", SVK.SIG_VALUE, "u32")
                 if kernel["ProblemType"]["UseBias"] == 3:
-                    signature.addArg("biasDim",     SVK.SIG_VALUE,        "u32")
+                    signature.addArg("biasDim", SVK.SIG_VALUE, "u32")
                     userArgumentsInfo.biasSize += 4
-        userArgumentsInfo.biasSize += (8 + 4 + 4)
+        userArgumentsInfo.biasSize += 8 + 4 + 4
 
         if kernel["ProblemType"]["UseE"]:
-            signature.addArg(      "E", SVK.SIG_GLOBALBUFFER, cptValueType, "generic")
+            signature.addArg("E", SVK.SIG_GLOBALBUFFER, cptValueType, "generic")
             for i in range(0, writer.states.e.numSgprStrides):
-                signature.addArg("StrideE%u"%i,        SVK.SIG_VALUE,        "u32")
+                signature.addArg("StrideE%u" % i, SVK.SIG_VALUE, "u32")
         userArgumentsInfo.eSize += 8
         for i in range(0, writer.states.e.numSgprStrides):
             userArgumentsInfo.eSize += 4
 
-        if ((kernel["ProblemType"]["ActivationType"] != 'none') and kernel["ActivationFused"]):
+        if (kernel["ProblemType"]["ActivationType"] != "none") and kernel[
+            "ActivationFused"
+        ]:
             if kernel["ProblemType"]["ActivationComputeDataType"].isHalf():
-                actValueType = 'pkf16'
-            for name in kernel["ProblemType"]["ActivationType"].getAdditionalArgStringList():
-                signature.addArg(                   name, SVK.SIG_VALUE,        actValueType)
-            if kernel["ProblemType"]["ActivationType"] == 'all':
-                signature.addArg(       "activationType", SVK.SIG_VALUE,               "u32")
+                actValueType = "pkf16"
+            for name in kernel["ProblemType"][
+                "ActivationType"
+            ].getAdditionalArgStringList():
+                signature.addArg(name, SVK.SIG_VALUE, actValueType)
+            if kernel["ProblemType"]["ActivationType"] == "all":
+                signature.addArg("activationType", SVK.SIG_VALUE, "u32")
         activationType = ActivationType("all")
         for name in activationType.getAdditionalArgStringList():
             userArgumentsInfo.activationSize += userArgumentsInfo.actMaxSize
         userArgumentsInfo.activationSize += 4  # Type size
 
         # Calculate total size
-        userArgumentsInfo.totalSize = userArgumentsInfo.gemmArgumentSize + \
-                                      userArgumentsInfo.scaleASize + \
-                                      userArgumentsInfo.scaleBSize + \
-                                      userArgumentsInfo.scaleCSize + \
-                                      userArgumentsInfo.scaleDSize + \
-                                      userArgumentsInfo.scaleAlphaVecSize + \
-                                      userArgumentsInfo.biasSize + \
-                                      userArgumentsInfo.eSize + \
-                                      userArgumentsInfo.activationSize
+        userArgumentsInfo.totalSize = (
+            userArgumentsInfo.gemmArgumentSize
+            + userArgumentsInfo.scaleASize
+            + userArgumentsInfo.scaleBSize
+            + userArgumentsInfo.scaleCSize
+            + userArgumentsInfo.scaleDSize
+            + userArgumentsInfo.scaleAlphaVecSize
+            + userArgumentsInfo.biasSize
+            + userArgumentsInfo.eSize
+            + userArgumentsInfo.activationSize
+        )
 
         writer.states.userArgsInfo = userArgumentsInfo
 
-        self.addOptConfigComment(signature,
-                                tt=[kernel["ThreadTile0"], kernel["ThreadTile1"]],
-                                sg=[kernel["SubGroup0"], kernel["SubGroup1"]],
-                                vwA=kernel["VectorWidthA"],
-                                vwB=kernel["VectorWidthB"],
-                                glvwA=kernel["GlobalReadVectorWidthA"],
-                                glvwB=kernel["GlobalReadVectorWidthB"],
-                                d2lA=kernel["DirectToLdsA"],
-                                d2lB=kernel["DirectToLdsB"],
-                                useSgprForGRO=kernel["_UseSgprForGRO"])
+        self.addOptConfigComment(
+            signature,
+            tt=[kernel["ThreadTile0"], kernel["ThreadTile1"]],
+            sg=[kernel["SubGroup0"], kernel["SubGroup1"]],
+            vwA=kernel["VectorWidthA"],
+            vwB=kernel["VectorWidthB"],
+            glvwA=kernel["GlobalReadVectorWidthA"],
+            glvwB=kernel["GlobalReadVectorWidthB"],
+            d2lA=kernel["DirectToLdsA"],
+            d2lB=kernel["DirectToLdsB"],
+            useSgprForGRO=kernel["_UseSgprForGRO"],
+        )
 
         return signature
 
-    def addOptConfigComment(self, signature: SignatureBase, tt, sg, vwA, vwB, glvwA, glvwB, d2lA, d2lB, useSgprForGRO):
+    def addOptConfigComment(
+        self,
+        signature: SignatureBase,
+        tt,
+        sg,
+        vwA,
+        vwB,
+        glvwA,
+        glvwB,
+        d2lA,
+        d2lB,
+        useSgprForGRO,
+    ):
         signature.addDescriptionTopic("Optimizations and Config:")
-        signature.addDescriptionBlock("ThreadTile= %u x %u" % (tt[0], tt[1]) )
-        signature.addDescriptionBlock("SubGroup= %u x %u" % (sg[0], sg[1]) )
-        signature.addDescriptionBlock("VectorWidthA=%u" % vwA )
-        signature.addDescriptionBlock("VectorWidthB=%u" % vwB )
-        signature.addDescriptionBlock("GlobalReadVectorWidthA=%u, GlobalReadVectorWidthB=%u" % (glvwA, glvwB) )
-        signature.addDescriptionBlock("DirectToLdsA=%s" % d2lA )
-        signature.addDescriptionBlock("DirectToLdsB=%s" % d2lB )
-        signature.addDescriptionBlock("UseSgprForGRO=%s" % useSgprForGRO )
+        signature.addDescriptionBlock("ThreadTile= %u x %u" % (tt[0], tt[1]))
+        signature.addDescriptionBlock("SubGroup= %u x %u" % (sg[0], sg[1]))
+        signature.addDescriptionBlock("VectorWidthA=%u" % vwA)
+        signature.addDescriptionBlock("VectorWidthB=%u" % vwB)
+        signature.addDescriptionBlock(
+            "GlobalReadVectorWidthA=%u, GlobalReadVectorWidthB=%u" % (glvwA, glvwB)
+        )
+        signature.addDescriptionBlock("DirectToLdsA=%s" % d2lA)
+        signature.addDescriptionBlock("DirectToLdsB=%s" % d2lB)
+        signature.addDescriptionBlock("UseSgprForGRO=%s" % useSgprForGRO)

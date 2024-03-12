@@ -26,10 +26,9 @@ from .Utils import hash_objs, state
 
 
 class Property:
-
     @classmethod
     def FromOriginalState(cls, d):
-        return cls(d.get('type'), d.get('index'), d.get('value'))
+        return cls(d.get("type"), d.get("index"), d.get("value"))
 
     def __init__(self, tag=None, index=None, value=None):
         self._tag = tag
@@ -49,49 +48,52 @@ class Property:
         return self._value
 
     def state(self):
-        rv = {'type': self.tag}
-        if self.index is not None: rv['index'] = state(self.index)
-        if self.value is not None: rv['value'] = state(self.value)
+        rv = {"type": self.tag}
+        if self.index is not None:
+            rv["index"] = state(self.index)
+        if self.value is not None:
+            rv["value"] = state(self.value)
         return rv
 
     def __eq__(self, other):
-        return self.__class__ == other.__class__ and \
-               self.tag   == other.tag   and \
-               self.value == other.value and \
-               self.index == other.index
+        return (
+            self.__class__ == other.__class__
+            and self.tag == other.tag
+            and self.value == other.value
+            and self.index == other.index
+        )
 
     def __hash__(self):
-        #return hash(self.tag) ^ hash(self.value) ^ hash(self.index)
+        # return hash(self.tag) ^ hash(self.value) ^ hash(self.index)
         return hash_objs(self.tag, self.value, self.index)
 
 
 class Predicate(Property):
-
     @classmethod
     def And(cls, predicates):
         predicates = tuple(predicates)
         if len(predicates) == 0:
-            return cls('TruePred')
+            return cls("TruePred")
         if len(predicates) == 1:
             return predicates[0]
-        return cls('And', value=predicates)
+        return cls("And", value=predicates)
 
     @classmethod
     def Or(cls, predicates):
         predicates = tuple(predicates)
         if len(predicates) == 0:
-            return cls('TruePred')
+            return cls("TruePred")
         if len(predicates) == 1:
             return predicates[0]
-        return cls('Or', value=predicates)
+        return cls("Or", value=predicates)
 
     def __lt__(self, other):
         # Ensure TruePred appears last.
-        if other.tag == 'TruePred':
-            if self.tag == 'TruePred':
+        if other.tag == "TruePred":
+            if self.tag == "TruePred":
                 return False
             return True
-        if self.tag == 'TruePred':
+        if self.tag == "TruePred":
             return False
 
         selfValue = self.value

@@ -26,141 +26,155 @@ from .SolutionStructs import Solution
 
 import csv
 
+
 def getSummationKeys(header):
-  keys=[]
-  for i in range(7, len(header)):
-    keystr = header[i].split("=")[1].strip()
-    key = int(keystr)
-    keys.append(key)
-  return keys
+    keys = []
+    for i in range(7, len(header)):
+        keystr = header[i].split("=")[1].strip()
+        key = int(keystr)
+        keys.append(key)
+    return keys
+
 
 def makeKey(row):
-  key=row[3]
-  for i in range(4, 7):
-    key += "_%s" % row[i].strip()
-  return key
+    key = row[3]
+    for i in range(4, 7):
+        key += "_%s" % row[i].strip()
+    return key
 
-def getSolutionBaseKey (solution):
 
-  macroTile0 = solution["MacroTile0"]
-  macroTile1 = solution["MacroTile1"]
-  globalSplitU = solution["GlobalSplitU"]
-  localSplitU = solution["WorkGroup"][2]
+def getSolutionBaseKey(solution):
 
-  key = "%s_%s_%s_%s" % (macroTile0, macroTile1, localSplitU, globalSplitU)
+    macroTile0 = solution["MacroTile0"]
+    macroTile1 = solution["MacroTile1"]
+    globalSplitU = solution["GlobalSplitU"]
+    localSplitU = solution["WorkGroup"][2]
 
-  return key
+    key = "%s_%s_%s_%s" % (macroTile0, macroTile1, localSplitU, globalSplitU)
+
+    return key
+
 
 def updateIfGT(theDictionary, theKey, theValue):
-  if not theKey in theDictionary:
-    theDictionary[theKey] = theValue
-  else:
-    theOldValue = theDictionary[theKey]
-    if theValue > theOldValue:
-      theDictionary[theKey] = theValue
+    if not theKey in theDictionary:
+        theDictionary[theKey] = theValue
+    else:
+        theOldValue = theDictionary[theKey]
+        if theValue > theOldValue:
+            theDictionary[theKey] = theValue
 
 
 def updateValidSolutions(validSolutions, analyzerSolutions, solutionMinNaming):
-  solutionsStartIndex = len(analyzerSolutions)
-  validSelectionSolutionsIncluded = []
-  validSelectionSolutionsRemainder = []
-  selectionSolutionsIds = set([])
-  for validSelectionSolution in validSolutions:
-    (validSolution, validSolutionInfo) = validSelectionSolution
-    if validSolution in analyzerSolutions:
-      validExactSolutionIndex = analyzerSolutions.index(validSolution)
-      selectionSolutionsIds.add(validExactSolutionIndex)
-      validExactSolution = analyzerSolutions[validExactSolutionIndex]
-      validSelectionSolutionsIncluded.append((validExactSolution, validSolutionInfo))
-    else:
-      validSelectionSolutionsRemainder.append(validSelectionSolution)
+    solutionsStartIndex = len(analyzerSolutions)
+    validSelectionSolutionsIncluded = []
+    validSelectionSolutionsRemainder = []
+    selectionSolutionsIds = set([])
+    for validSelectionSolution in validSolutions:
+        (validSolution, validSolutionInfo) = validSelectionSolution
+        if validSolution in analyzerSolutions:
+            validExactSolutionIndex = analyzerSolutions.index(validSolution)
+            selectionSolutionsIds.add(validExactSolutionIndex)
+            validExactSolution = analyzerSolutions[validExactSolutionIndex]
+            validSelectionSolutionsIncluded.append(
+                (validExactSolution, validSolutionInfo)
+            )
+        else:
+            validSelectionSolutionsRemainder.append(validSelectionSolution)
 
-  selectionSolutions = []
-  for i in range(0 ,len(validSelectionSolutionsIncluded)):
-    validSelectionSolution = validSelectionSolutionsIncluded[i]
-    (validSolution, validSolutionInfo) = validSelectionSolution
-    validSolution["Ideals"] = validSolutionInfo
-    analyzerSolutions.append(validSolution)
+    selectionSolutions = []
+    for i in range(0, len(validSelectionSolutionsIncluded)):
+        validSelectionSolution = validSelectionSolutionsIncluded[i]
+        (validSolution, validSolutionInfo) = validSelectionSolution
+        validSolution["Ideals"] = validSolutionInfo
+        analyzerSolutions.append(validSolution)
 
-  solutionsStartIndex = len(analyzerSolutions)
+    solutionsStartIndex = len(analyzerSolutions)
 
-  for i in range(0, len(validSelectionSolutionsRemainder)):
-    validSelectionSolution = validSelectionSolutionsRemainder[i]
-    (validSolution, validSolutionInfo) = validSelectionSolution
-    selectionSolutionIndex = solutionsStartIndex + i
-    selectionSolutionsIds.add(selectionSolutionIndex)
-    validSolution["SolutionNameMin"] = Solution.getNameMin(validSolution, solutionMinNaming)
-    validSolution["KernelNameMin"]   = Solution.getNameMin(validSolution, solutionMinNaming, True)
-    validSolution["Ideals"] = validSolutionInfo
-    selectionSolutions.append(validSolution)
+    for i in range(0, len(validSelectionSolutionsRemainder)):
+        validSelectionSolution = validSelectionSolutionsRemainder[i]
+        (validSolution, validSolutionInfo) = validSelectionSolution
+        selectionSolutionIndex = solutionsStartIndex + i
+        selectionSolutionsIds.add(selectionSolutionIndex)
+        validSolution["SolutionNameMin"] = Solution.getNameMin(
+            validSolution, solutionMinNaming
+        )
+        validSolution["KernelNameMin"] = Solution.getNameMin(
+            validSolution, solutionMinNaming, True
+        )
+        validSolution["Ideals"] = validSolutionInfo
+        selectionSolutions.append(validSolution)
 
-  selectionSolutionsIdsList = list(selectionSolutionsIds)
+    selectionSolutionsIdsList = list(selectionSolutionsIds)
 
-  return selectionSolutionsIdsList
-
-
-def analyzeSolutionSelection(problemType, selectionFileNameList, numSolutionsPerGroup, solutionGroupMap, solutionsList):
-
-  performanceMap = {}
-  solutionsHash = {}
-
-  totalIndices = problemType["TotalIndices"]
-  summationIndex = totalIndices
-  numIndices = totalIndices + problemType["NumIndicesLD"]
-  problemSizeStartIdx = 1
-  totalSizeIdx = problemSizeStartIdx + numIndices
-  solutionStartIdx = totalSizeIdx + 1
-  for fileIdx in range(0, len(selectionFileNameList)):
-    solutions = solutionsList[fileIdx]
-    selectionFileName = selectionFileNameList[fileIdx]
-    numSolutions = numSolutionsPerGroup[fileIdx]
-    rowLength = solutionStartIdx + numSolutions
-    solutionBaseKeys = []
-
-    for solution in solutions:
-      baseKey = getSolutionBaseKey(solution)
-      solutionBaseKeys.append(baseKey)
-
-    selectionfFile = open(selectionFileName, "r")
-    csvFile = csv.reader(selectionfFile)
-
-    firstRow = 0
-    for row in csvFile:
-      if firstRow == 0:
-        firstRow += 1
-      else:
-        sumationId = row[summationIndex].strip()
-
-        solutionIndex = 0
-        for i in range(solutionStartIdx, rowLength):
-          baseKey = solutionBaseKeys[solutionIndex]
-          key = "%s_%s" % (baseKey, sumationId)
-          solution = solutions[solutionIndex]
-          solutionIndex += 1
-          value = float(row[i])
-          if not solution in solutionsHash:
-            dataMap = {}
-            solutionsHash[solution] = dataMap
-
-          updateIfGT(solutionsHash[solution], sumationId, value)
-          if not key in performanceMap:
-            performanceMap[key] = (solution, value)
-          else:
-            _,valueOld = performanceMap[key]
-            if value > valueOld:
-              performanceMap[key] = (solution, value)
+    return selectionSolutionsIdsList
 
 
-  validSolutions = []
-  validSolutionSet = set([])
+def analyzeSolutionSelection(
+    problemType,
+    selectionFileNameList,
+    numSolutionsPerGroup,
+    solutionGroupMap,
+    solutionsList,
+):
 
-  for key in performanceMap:
-    solution, _ = performanceMap[key]
-    validSolutionSet.add(solution)
+    performanceMap = {}
+    solutionsHash = {}
 
-  for validSolution in validSolutionSet:
-    dataMap = solutionsHash[validSolution]
-    validSolutions.append((validSolution,dataMap))
+    totalIndices = problemType["TotalIndices"]
+    summationIndex = totalIndices
+    numIndices = totalIndices + problemType["NumIndicesLD"]
+    problemSizeStartIdx = 1
+    totalSizeIdx = problemSizeStartIdx + numIndices
+    solutionStartIdx = totalSizeIdx + 1
+    for fileIdx in range(0, len(selectionFileNameList)):
+        solutions = solutionsList[fileIdx]
+        selectionFileName = selectionFileNameList[fileIdx]
+        numSolutions = numSolutionsPerGroup[fileIdx]
+        rowLength = solutionStartIdx + numSolutions
+        solutionBaseKeys = []
 
-  return validSolutions
+        for solution in solutions:
+            baseKey = getSolutionBaseKey(solution)
+            solutionBaseKeys.append(baseKey)
 
+        selectionfFile = open(selectionFileName, "r")
+        csvFile = csv.reader(selectionfFile)
+
+        firstRow = 0
+        for row in csvFile:
+            if firstRow == 0:
+                firstRow += 1
+            else:
+                sumationId = row[summationIndex].strip()
+
+                solutionIndex = 0
+                for i in range(solutionStartIdx, rowLength):
+                    baseKey = solutionBaseKeys[solutionIndex]
+                    key = "%s_%s" % (baseKey, sumationId)
+                    solution = solutions[solutionIndex]
+                    solutionIndex += 1
+                    value = float(row[i])
+                    if not solution in solutionsHash:
+                        dataMap = {}
+                        solutionsHash[solution] = dataMap
+
+                    updateIfGT(solutionsHash[solution], sumationId, value)
+                    if not key in performanceMap:
+                        performanceMap[key] = (solution, value)
+                    else:
+                        _, valueOld = performanceMap[key]
+                        if value > valueOld:
+                            performanceMap[key] = (solution, value)
+
+    validSolutions = []
+    validSolutionSet = set([])
+
+    for key in performanceMap:
+        solution, _ = performanceMap[key]
+        validSolutionSet.add(solution)
+
+    for validSolution in validSolutionSet:
+        dataMap = solutionsHash[validSolution]
+        validSolutions.append((validSolution, dataMap))
+
+    return validSolutions

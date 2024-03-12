@@ -30,24 +30,27 @@ import yaml
 from Tensile import Tensile
 from Tensile.TensileInstructions import DataType
 
+
 ################################################################################
 # Locate Executables
 # rocm-smi, hip-clang, rocm_agent_enumerator
 ################################################################################
-def isExe( filePath ):
-  return os.path.isfile(filePath) and os.access(filePath, os.X_OK)
+def isExe(filePath):
+    return os.path.isfile(filePath) and os.access(filePath, os.X_OK)
 
-def locateExe( defaultPath, exeName ): # /opt/rocm/bin, hip-clang
-  # look in path first
-  for path in os.environ["PATH"].split(os.pathsep):
-    exePath = os.path.join(path, exeName)
+
+def locateExe(defaultPath, exeName):  # /opt/rocm/bin, hip-clang
+    # look in path first
+    for path in os.environ["PATH"].split(os.pathsep):
+        exePath = os.path.join(path, exeName)
+        if isExe(exePath):
+            return exePath
+    # look in default path second
+    exePath = os.path.join(defaultPath, exeName)
     if isExe(exePath):
-      return exePath
-  # look in default path second
-  exePath = os.path.join(defaultPath, exeName)
-  if isExe(exePath):
-    return exePath
-  return None
+        return exePath
+    return None
+
 
 def walkDict(root, path=""):
     """
@@ -63,17 +66,19 @@ def walkDict(root, path=""):
                 keypath = path + "." + str(keypath)
             yield from walkDict(value, keypath)
     elif isinstance(root, list):
-        for i,obj in enumerate(root):
+        for i, obj in enumerate(root):
             keypath = str(i)
             if path != "":
                 keypath = path + "." + keypath
             yield from walkDict(obj, keypath)
+
 
 def markNamed(name):
     """
     Gets a mark by a name contained in a variable.
     """
     return getattr(pytest.mark, name)
+
 
 def configMarks(filepath, rootDir, availableArchs):
     """
@@ -93,9 +98,9 @@ def configMarks(filepath, rootDir, availableArchs):
     # First part of directory - nightly, pre-checkin, etc.
     marks = list([markNamed(component) for component in components[:-1]])
 
-    if 'xfail' in relpath or 'wip' in relpath:
+    if "xfail" in relpath or "wip" in relpath:
         marks.append(pytest.mark.xfail)
-    if 'disabled' in relpath:
+    if "disabled" in relpath:
         marks.append(pytest.mark.skip)
 
     try:
@@ -121,9 +126,9 @@ def configMarks(filepath, rootDir, availableArchs):
     validate = True
     validateAll = False
     try:
-        if doc["GlobalParameters"]['NumElementsToValidate'] == 0:
+        if doc["GlobalParameters"]["NumElementsToValidate"] == 0:
             validate = False
-        if doc["GlobalParameters"]['NumElementsToValidate'] == -1:
+        if doc["GlobalParameters"]["NumElementsToValidate"] == -1:
             validateAll = True
     except KeyError:
         pass
@@ -134,12 +139,14 @@ def configMarks(filepath, rootDir, availableArchs):
         marks.append(pytest.mark.validateAll)
 
     dataTypes = set([problem[0]["DataType"] for problem in doc["BenchmarkProblems"]])
-    operationTypes = set([problem[0]["OperationType"] for problem in doc["BenchmarkProblems"]])
+    operationTypes = set(
+        [problem[0]["OperationType"] for problem in doc["BenchmarkProblems"]]
+    )
 
     languages = set()
-    #print ("***doc=", doc)
+    # print ("***doc=", doc)
     for obj, path in walkDict(doc):
-        #print ("  obj=", obj, "path=", path)
+        # print ("  obj=", obj, "path=", path)
         if "KernelLanguage" in path and isinstance(obj, str):
             languages.add(obj)
 
@@ -154,6 +161,7 @@ def configMarks(filepath, rootDir, availableArchs):
         marks.append(markNamed(operationType))
 
     return marks
+
 
 def findAvailableArchs():
     availableArchs = []
@@ -171,12 +179,13 @@ def findAvailableArchs():
             availableArchs.append(line)
     return availableArchs
 
+
 def findConfigs(rootDir=None):
     """
     Walks rootDir (defaults to trying to find Tensile/Tests) and returns a
     list of test parameters, one for each YAML file.
     """
-    if rootDir ==  None:
+    if rootDir == None:
         rootDir = os.path.dirname(os.path.dirname(__file__))
         printRoot = os.path.dirname(os.path.dirname(rootDir))
     else:
@@ -185,19 +194,20 @@ def findConfigs(rootDir=None):
     availableArchs = findAvailableArchs()
 
     params = []
-    for (dirpath, dirnames, filenames) in os.walk(rootDir):
+    for dirpath, dirnames, filenames in os.walk(rootDir):
         for filename in filenames:
             # Skip build client script
             if filename == "build_client.yaml":
                 continue
             # filter out yamls in logic_yaml since they are not meant for Tensile.py
-            elif filename.endswith('.yaml') and "logic_yaml" not in dirpath:
+            elif filename.endswith(".yaml") and "logic_yaml" not in dirpath:
                 filepath = os.path.join(rootDir, dirpath, filename)
                 if not "test_data" in filepath:
                     marks = configMarks(filepath, rootDir, availableArchs)
                     relpath = os.path.relpath(filepath, printRoot)
                     params.append(pytest.param(filepath, marks=marks, id=relpath))
     return params
+
 
 @pytest.mark.parametrize("config", findConfigs())
 def test_config(tensile_args, config, tmpdir):

@@ -26,48 +26,58 @@ from .Common import globalParameters, CHeader
 from .Activation import ActivationType
 from .KernelWriterBase import KernelWriterBase
 
+
 class KernelWriterActivationEnumHeader(KernelWriterBase):
+    def __init__(self, state):
+        super().__init__()
+        self.state["ProblemType"] = deepcopy(state["ProblemType"])
 
-  def __init__(self, state):
-    super().__init__()
-    self.state["ProblemType"] = deepcopy(state["ProblemType"])
+        self.actGradientPrefix = ""
+        self.actExportType = ActivationType.Export.NORMAL
+        if self.state["ProblemType"]["Gradient"]:
+            self.actGradientPrefix = "Gradient"
+            self.actExportType = ActivationType.Export.GRADONLY
 
-    self.actGradientPrefix = ""
-    self.actExportType = ActivationType.Export.NORMAL
-    if self.state["ProblemType"]["Gradient"]:
-      self.actGradientPrefix = "Gradient"
-      self.actExportType = ActivationType.Export.GRADONLY
+        # derive parameter
+        self.language = "HIP"
+        self.kernelName = self.getKernelName()
 
-    # derive parameter
-    self.language = "HIP"
-    self.kernelName = self.getKernelName()
+    def keys(self):
+        return self.getKernelName()
 
-  def keys(self):
-    return self.getKernelName()
+    def getKernelName(self):
+        return "Tensile%sActivationEnum_%s" % (
+            self.actGradientPrefix,
+            self.state["ProblemType"]["ActivationComputeDataType"].toChar(),
+        )
 
-  def getKernelName(self):
-    return "Tensile%sActivationEnum_%s"%(self.actGradientPrefix, \
-                                         self.state["ProblemType"]["ActivationComputeDataType"].toChar())
+    def getSourceFileString(self):
+        fileString = "// This is a dummy file."
+        return (0, fileString)
 
-  def getSourceFileString(self):
-    fileString = "// This is a dummy file."
-    return (0, fileString)
+    def getHeaderFileString(self):
+        fileString = ""  # CHeader
+        if not globalParameters["MergeFiles"]:
+            fileString += CHeader
+            fileString += "#pragma once\n\n"
 
-  def getHeaderFileString(self):
-    fileString = "" # CHeader
-    if not globalParameters["MergeFiles"]:
-      fileString += CHeader
-      fileString += "#pragma once\n\n"
+        activationCDataType = self.state["ProblemType"]["ActivationComputeDataType"]
+        enumName = "%sActivationType_%s" % (
+            self.actGradientPrefix,
+            activationCDataType.toChar(),
+        )
+        fileString += "namespace Tensile {\n"
+        fileString += "enum class %s : uint32_t\n" % enumName
+        fileString += "{\n"
+        enumList = ActivationType.getEnumStrList(
+            activationCDataType, exportType=self.actExportType
+        )
+        for idx, enumStr in enumerate(enumList):
+            fileString += "  %s = %s,\n" % (
+                ActivationType(enumStr).toEnum(),
+                ActivationType.getEnumIndex(enumStr),
+            )
+        fileString += "};\n"
+        fileString += "}  // End of namespace Tensile\n"
 
-    activationCDataType = self.state["ProblemType"]["ActivationComputeDataType"]
-    enumName = "%sActivationType_%s"%(self.actGradientPrefix, activationCDataType.toChar())
-    fileString += "namespace Tensile {\n"
-    fileString += "enum class %s : uint32_t\n"%enumName
-    fileString += "{\n"
-    enumList = ActivationType.getEnumStrList(activationCDataType, exportType=self.actExportType)
-    for idx, enumStr in enumerate(enumList):
-      fileString += "  %s = %s,\n"%(ActivationType(enumStr).toEnum(), ActivationType.getEnumIndex(enumStr))
-    fileString += "};\n"
-    fileString += "}  // End of namespace Tensile\n"
-
-    return fileString
+        return fileString

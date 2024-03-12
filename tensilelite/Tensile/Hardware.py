@@ -26,6 +26,7 @@ from . import Properties
 from .TensileInstructions import getGfxName
 import copy
 
+
 class HardwarePredicate(Properties.Predicate):
     @classmethod
     def FromISA(cls, isa):
@@ -38,29 +39,41 @@ class HardwarePredicate(Properties.Predicate):
         if cuCount == None:
             return cls("AMDGPU", value=cls("Processor", value=gfxArch))
         else:
-            return cls("AMDGPU", value=cls.And([cls("Processor", value=gfxArch),
-                                                cls("CUCount", value=cuCount)]))
+            return cls(
+                "AMDGPU",
+                value=cls.And(
+                    [cls("Processor", value=gfxArch), cls("CUCount", value=cuCount)]
+                ),
+            )
 
     def __lt__(self, other):
         # Use superclass logic for TruePreds
-        if other.tag == 'TruePred' or self.tag == 'TruePred':
+        if other.tag == "TruePred" or self.tag == "TruePred":
             return super().__lt__(other)
 
         # Compute unit counts are embedded as 'And' with
         # 'Processor' and 'ComputeUnitCount' as children
-        if self.value.tag == 'And':
+        if self.value.tag == "And":
             myAndPred = self.value
-            myProcPred = next(iter(x for x in myAndPred.value if x.tag == "Processor"), None)
-            myCUPred = next(iter(x for x in myAndPred.value if x.tag == "CUCount"), None)
+            myProcPred = next(
+                iter(x for x in myAndPred.value if x.tag == "Processor"), None
+            )
+            myCUPred = next(
+                iter(x for x in myAndPred.value if x.tag == "CUCount"), None
+            )
             myCUCount = myCUPred.value if myCUPred != None else 0
         else:
             myProcPred = self.value
             myCUCount = 0
 
-        if other.value.tag == 'And':
+        if other.value.tag == "And":
             otherAndPred = other.value
-            otherProcPred = next(iter(x for x in otherAndPred.value if x.tag == "Processor"), None)
-            otherCUPred = next(iter(x for x in otherAndPred.value if x.tag == "CUCount"), None)
+            otherProcPred = next(
+                iter(x for x in otherAndPred.value if x.tag == "Processor"), None
+            )
+            otherCUPred = next(
+                iter(x for x in otherAndPred.value if x.tag == "CUCount"), None
+            )
             otherCUCount = otherCUPred.value if otherCUPred != None else 0
         else:
             otherProcPred = other.value
@@ -69,13 +82,19 @@ class HardwarePredicate(Properties.Predicate):
         # If CU properties are empty, then compare processor predicates
         if myCUCount == otherCUCount == 0:
             # Make sure that we have valid processor preds
-            assert myProcPred != None and otherProcPred != None, "Missing processor predicate"
-            assert myProcPred.tag == otherProcPred.tag == "Processor", "Invalid processor predicate"
+            assert (
+                myProcPred != None and otherProcPred != None
+            ), "Missing processor predicate"
+            assert (
+                myProcPred.tag == otherProcPred.tag == "Processor"
+            ), "Invalid processor predicate"
 
             # Downgrade to base class so that we don't recurse
             myProcPredCopy = copy.deepcopy(myProcPred)
             otherProcPredCopy = copy.deepcopy(otherProcPred)
-            myProcPredCopy.__class__ = otherProcPredCopy.__class__ = Properties.Predicate
+            myProcPredCopy.__class__ = (
+                otherProcPredCopy.__class__
+            ) = Properties.Predicate
             return myProcPredCopy < otherProcPredCopy
 
         # Higher priority given to higher CU count

@@ -24,6 +24,7 @@ from .TensileInstructions import Module, SAddI32, SEndpgm, fastdeepcopy
 
 from dataclasses import dataclass, field
 
+
 #######################################
 # Public functions
 #######################################
@@ -31,16 +32,19 @@ from dataclasses import dataclass, field
 class TensilePassOptions:
     removeDupActFunc: bool = field(init=False)
 
+
 def TensilePass(module, options: TensilePassOptions):
     if options.removeDupActFunc:
         _removeDuplicatedActivationFunctions(module)
 
 
 def getActivationFunctionModuleName(gwvw, sgpr, tmpVgpr, tmpSgpr):
-    return "ActFunc_VW%d_Sgpr%d_Tmp%s_%s"%(gwvw, sgpr, tmpVgpr, tmpSgpr)
+    return "ActFunc_VW%d_Sgpr%d_Tmp%s_%s" % (gwvw, sgpr, tmpVgpr, tmpSgpr)
+
 
 def getActivationBranchModuleName():
     return "InsertActFunctionCallAddrCalc"
+
 
 #######################################
 # Internal functions
@@ -63,6 +67,7 @@ def _findActFunc(module) -> dict:
                         modFunc[key] = t
     return modFunc
 
+
 def _replaceActBranchLabel(module, labels):
     for item in module.items():
         if isinstance(item, Module):
@@ -70,13 +75,19 @@ def _replaceActBranchLabel(module, labels):
                 labelLeft = labels[1:]
                 replaceLabel = False
                 for inst in item.items():
-                    if isinstance(inst, SAddI32) and inst.comment == "target branch offset":
+                    if (
+                        isinstance(inst, SAddI32)
+                        and inst.comment == "target branch offset"
+                    ):
                         if inst.srcs[0] in labelLeft:
                             replaceLabel = True
                             break
                 if replaceLabel:
                     for inst in item.items():
-                        if isinstance(inst, SAddI32) and inst.comment == "target branch offset":
+                        if (
+                            isinstance(inst, SAddI32)
+                            and inst.comment == "target branch offset"
+                        ):
                             # The label is generated in the format of XXXX_1, XXXX_2
                             # and string.rpartition returns ('XXXX', '_', '1').
                             # We only need the first string.
@@ -84,6 +95,7 @@ def _replaceActBranchLabel(module, labels):
                             inst.srcs[0] = part[0]
             else:
                 _replaceActBranchLabel(item, labels)
+
 
 def _removeDuplicatedActivationFunctions(module):
     modFunc = _findActFunc(module)

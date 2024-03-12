@@ -30,12 +30,20 @@ import sys
 
 if __name__ == "__main__":
     argParser = argparse.ArgumentParser()
-    argParser.add_argument("stats_file", type=os.path.realpath,
-            help="Profiler stats file")
-    argParser.add_argument("-s", "--sort", dest="sort_type", type=str, \
-        default="cumtime", help="stats sort type")
-    argParser.add_argument("-n", "--num", dest="num", type=str, \
-        default=-1, help="Restrict output num")
+    argParser.add_argument(
+        "stats_file", type=os.path.realpath, help="Profiler stats file"
+    )
+    argParser.add_argument(
+        "-s",
+        "--sort",
+        dest="sort_type",
+        type=str,
+        default="cumtime",
+        help="stats sort type",
+    )
+    argParser.add_argument(
+        "-n", "--num", dest="num", type=str, default=-1, help="Restrict output num"
+    )
     args = argParser.parse_args(sys.argv[1:])
     stats = pstats.Stats(args.stats_file)
 

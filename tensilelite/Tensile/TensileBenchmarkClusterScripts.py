@@ -24,6 +24,7 @@
 
 import os
 
+
 class ScriptHelper(object):
     """
     Helper class to facilitate formatting when
@@ -40,13 +41,14 @@ class ScriptHelper(object):
 
     @classmethod
     def genEcho(cls, text):
-        return cls.genLine(str("echo \"{0}\";").format(str(text)))
+        return cls.genLine(str('echo "{0}";').format(str(text)))
 
     @classmethod
     def makeExecutable(cls, path):
         mode = os.stat(path).st_mode
-        mode |= (mode & 0o444) >> 2    # copy R bits to X
+        mode |= (mode & 0o444) >> 2  # copy R bits to X
         os.chmod(path, mode)
+
 
 class ScriptWriter(object):
     """
@@ -55,6 +57,7 @@ class ScriptWriter(object):
     Has factory functions to build scripts with regular
     workflow interface.
     """
+
     def __init__(self):
         self._buffer = ""
 
@@ -67,7 +70,7 @@ class ScriptWriter(object):
     def writeEcho(self, text):
         self._buffer += ScriptHelper.genEcho(text)
 
-    def dumpToFile(self, fileName, outputDir = "."):
+    def dumpToFile(self, fileName, outputDir="."):
         scriptPath = os.path.join(outputDir, fileName)
         with open(scriptPath, "w") as f:
             f.write(self._buffer)
@@ -77,7 +80,7 @@ class ScriptWriter(object):
         return self._buffer
 
     @classmethod
-    def writeScript(bufferClass, writerClass, fileName, outputDir = "."):
+    def writeScript(bufferClass, writerClass, fileName, outputDir="."):
         buffer = bufferClass()
         writerClass.writeHeader(buffer)
         writerClass.writeBody(buffer)
@@ -113,6 +116,7 @@ class BenchmarkNodeWriter(object):
     and finally invokes the benchmark on the
     supplied yaml.
     """
+
     @staticmethod
     def __initHeader(sBuffer):
         sBuffer.writeComment("!/bin/bash")
@@ -123,8 +127,10 @@ class BenchmarkNodeWriter(object):
     @staticmethod
     def __initializeFuncs(sBuffer):
         sBuffer.writeComment("Funcs")
-        sBuffer.writeLine("usage() { echo \"Usage: $0 [-i <path_to_docker_image>] [-l <log_dir>] [-r <result_dir>] [-t <task_dir>]\" 1>&2; exit 1; }")
-        sBuffer.writeLine("failAndExit() { echo \"FAILED: $1\" 1>&2; exit 1; }")
+        sBuffer.writeLine(
+            'usage() { echo "Usage: $0 [-i <path_to_docker_image>] [-l <log_dir>] [-r <result_dir>] [-t <task_dir>]" 1>&2; exit 1; }'
+        )
+        sBuffer.writeLine('failAndExit() { echo "FAILED: $1" 1>&2; exit 1; }')
         sBuffer.writeLine("")
 
     @staticmethod
@@ -132,7 +138,7 @@ class BenchmarkNodeWriter(object):
         sBuffer.writeComment("Parse arguments")
         sBuffer.writeLine("while getopts i:l:r:t: flag")
         sBuffer.writeLine("do")
-        sBuffer.writeLine("    case \"${flag}\" in")
+        sBuffer.writeLine('    case "${flag}" in')
         sBuffer.writeLine("        i) dockerImagePath=${OPTARG};;")
         sBuffer.writeLine("        l) logDir=${OPTARG};;")
         sBuffer.writeLine("        r) resultDir=${OPTARG};;")
@@ -140,9 +146,15 @@ class BenchmarkNodeWriter(object):
         sBuffer.writeLine("        *) usage;;")
         sBuffer.writeLine("    esac")
         sBuffer.writeLine("done")
-        sBuffer.writeLine("[ -z \"${dockerImagePath}\" ] || [ -z \"${logDir}\" ] || [ -z \"${resultDir}\" ]  || [ -z \"${taskDir}\" ] && usage;")
-        sBuffer.writeLine("[ -d \"${logDir}\" ] && [ -d \"${resultDir}\" ] && [ -d \"${taskDir}\" ] || failAndExit \"Directory not found\";")
-        sBuffer.writeLine("[ -f \"${dockerImagePath}\" ] || failAndExit \"Docker image not found: $dockerImagePath\";")
+        sBuffer.writeLine(
+            '[ -z "${dockerImagePath}" ] || [ -z "${logDir}" ] || [ -z "${resultDir}" ]  || [ -z "${taskDir}" ] && usage;'
+        )
+        sBuffer.writeLine(
+            '[ -d "${logDir}" ] && [ -d "${resultDir}" ] && [ -d "${taskDir}" ] || failAndExit "Directory not found";'
+        )
+        sBuffer.writeLine(
+            '[ -f "${dockerImagePath}" ] || failAndExit "Docker image not found: $dockerImagePath";'
+        )
         sBuffer.writeEcho("Docker image path: $dockerImagePath")
         sBuffer.writeEcho("Path to log: $logDir")
         sBuffer.writeEcho("Path to task: $taskDir")
@@ -152,12 +164,16 @@ class BenchmarkNodeWriter(object):
     @staticmethod
     def __loadDockerImage(sBuffer):
         sBuffer.writeComment("Import docker image")
-        sBuffer.writeComment("Successful output is \"Loaded image: imageName:TAG\"")
+        sBuffer.writeComment('Successful output is "Loaded image: imageName:TAG"')
         sBuffer.writeEcho("Loading docker image...")
-        sBuffer.writeLine("dockerLoadOutput=`docker load < $dockerImagePath || failAndExit \"Importing docker image\"`")
+        sBuffer.writeLine(
+            'dockerLoadOutput=`docker load < $dockerImagePath || failAndExit "Importing docker image"`'
+        )
         sBuffer.writeLine("")
         sBuffer.writeEcho("Docker Load Result: $dockerLoadOutput")
-        sBuffer.writeLine("[ -z \"${dockerLoadOutput}\" ] && failAndExit \"Loading docker image $dockerImagePath\"")
+        sBuffer.writeLine(
+            '[ -z "${dockerLoadOutput}" ] && failAndExit "Loading docker image $dockerImagePath"'
+        )
         sBuffer.writeLine("")
         sBuffer.writeComment("Split the output on ':' or spaces")
         sBuffer.writeComment("Capture the docker image name and tag")
@@ -166,13 +182,19 @@ class BenchmarkNodeWriter(object):
         sBuffer.writeLine("dockerTag=${outputSplit[3]}")
         sBuffer.writeLine("")
         sBuffer.writeComment("Find docker image record with correct name and tag")
-        sBuffer.writeLine("dockerImageQuery=`docker images | grep -i \"$dockerName\" | grep -i \"$dockerTag\"`")
-        sBuffer.writeLine("[ -z \"${dockerImageQuery}\" ] && failAndExit \"Finding docker image record for $dockerName:$dockerTag\"")
+        sBuffer.writeLine(
+            'dockerImageQuery=`docker images | grep -i "$dockerName" | grep -i "$dockerTag"`'
+        )
+        sBuffer.writeLine(
+            '[ -z "${dockerImageQuery}" ] && failAndExit "Finding docker image record for $dockerName:$dockerTag"'
+        )
         sBuffer.writeLine("")
         sBuffer.writeComment("Get docker image ID")
         sBuffer.writeLine("outputSplit=(${dockerImageQuery//   / })")
         sBuffer.writeLine("dockerImageId=${outputSplit[2]}")
-        sBuffer.writeLine("[ -z \"${dockerImageId}\" ] && failAndExit \"Finding docker image id for $dockerName:$dockerTag\"")
+        sBuffer.writeLine(
+            '[ -z "${dockerImageId}" ] && failAndExit "Finding docker image id for $dockerName:$dockerTag"'
+        )
         sBuffer.writeEcho("Success: Loaded Image ID: ${dockerImageId}")
         sBuffer.writeLine("")
 
@@ -182,7 +204,9 @@ class BenchmarkNodeWriter(object):
         sBuffer.writeLine("")
         sBuffer.writeComment("Run container with mounted taskDir")
         sBuffer.writeEcho("Running container... (this might take some time):")
-        sBuffer.writeLine("runCmd=\"docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add video --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v \"$taskDir\":\"/TaskDir\" -v \"$resultDir\":\"/ResultDir\" -v \"$logDir\":\"/LogDir\" $dockerImageId\"")
+        sBuffer.writeLine(
+            'runCmd="docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add video --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v "$taskDir":"/TaskDir" -v "$resultDir":"/ResultDir" -v "$logDir":"/LogDir" $dockerImageId"'
+        )
         sBuffer.writeEcho("$runCmd")
         sBuffer.writeLine("$runCmd")
         sBuffer.writeLine("returnCode=$?")
@@ -207,6 +231,7 @@ class BenchmarkNodeWriter(object):
     def writeEpilogue(cls, sBuffer):
         cls.__exit(sBuffer)
 
+
 class BenchmarkTaskWriter(object):
     """
     SLURM specific script.
@@ -216,19 +241,26 @@ class BenchmarkTaskWriter(object):
     The final task submitted is the node script
     which will run on one of the hosts.
     """
+
     @staticmethod
     def __initHeader(sBuffer):
         sBuffer.writeComment("!/bin/bash")
         sBuffer.writeComment("Benchmark task enqueue script")
-        sBuffer.writeComment("This script will configure and commit a single task to the cluster.")
-        sBuffer.writeComment("Intended to be the run target of SLURM SBATCH multiplexer")
+        sBuffer.writeComment(
+            "This script will configure and commit a single task to the cluster."
+        )
+        sBuffer.writeComment(
+            "Intended to be the run target of SLURM SBATCH multiplexer"
+        )
         sBuffer.writeLine("")
 
     @staticmethod
     def __initializeFuncs(sBuffer):
         sBuffer.writeComment("Funcs")
-        sBuffer.writeLine("usage() { echo \"Usage: $0 [-i <image_dir>] [-l <logs_dir>] [-r <results_dir>] [-t <tasks_dir>] \" 1>&2; exit 1; }")
-        sBuffer.writeLine("failAndExit() { echo \"FAILED: $1\" 1>&2; exit 1; }")
+        sBuffer.writeLine(
+            'usage() { echo "Usage: $0 [-i <image_dir>] [-l <logs_dir>] [-r <results_dir>] [-t <tasks_dir>] " 1>&2; exit 1; }'
+        )
+        sBuffer.writeLine('failAndExit() { echo "FAILED: $1" 1>&2; exit 1; }')
         sBuffer.writeLine("")
 
     @staticmethod
@@ -236,7 +268,7 @@ class BenchmarkTaskWriter(object):
         sBuffer.writeComment("Parse arguments")
         sBuffer.writeLine("while getopts i:l:r:t: flag")
         sBuffer.writeLine("do")
-        sBuffer.writeLine("    case \"${flag}\" in")
+        sBuffer.writeLine('    case "${flag}" in')
         sBuffer.writeLine("        i) imageDir=${OPTARG};; ")
         sBuffer.writeLine("        l) logsDir=${OPTARG};;")
         sBuffer.writeLine("        r) resultsDir=${OPTARG};;")
@@ -244,8 +276,12 @@ class BenchmarkTaskWriter(object):
         sBuffer.writeLine("        *) usage;;")
         sBuffer.writeLine("    esac")
         sBuffer.writeLine("done")
-        sBuffer.writeLine("[ -z \"${imageDir}\" ] || [ -z \"${logsDir}\" ] || [ -z \"${resultsDir}\" ] || [ -z \"${tasksDir}\" ] && usage;")
-        sBuffer.writeLine("[ -d \"${imageDir}\" ] && [ -d \"${logsDir}\" ] && [ -d \"${resultsDir}\" ] && [ -d \"${tasksDir}\" ] || failAndExit \"Directory not found\";")
+        sBuffer.writeLine(
+            '[ -z "${imageDir}" ] || [ -z "${logsDir}" ] || [ -z "${resultsDir}" ] || [ -z "${tasksDir}" ] && usage;'
+        )
+        sBuffer.writeLine(
+            '[ -d "${imageDir}" ] && [ -d "${logsDir}" ] && [ -d "${resultsDir}" ] && [ -d "${tasksDir}" ] || failAndExit "Directory not found";'
+        )
         sBuffer.writeEcho("Image dir: $imageDir")
         sBuffer.writeEcho("Logs dir: $logsDir")
         sBuffer.writeEcho("Tasks dir: $tasksDir")
@@ -273,7 +309,9 @@ class BenchmarkTaskWriter(object):
     @staticmethod
     def __submitTask(sBuffer):
         sBuffer.writeComment("Enqueue node task")
-        sBuffer.writeLine("srun -N 1 \"$task\" -i \"$image\" -l \"$taskLogDir\" -r \"$taskResultDir\" -t \"$taskDir\"")
+        sBuffer.writeLine(
+            'srun -N 1 "$task" -i "$image" -l "$taskLogDir" -r "$taskResultDir" -t "$taskDir"'
+        )
         sBuffer.writeLine("returnCode=$?")
 
     @staticmethod
@@ -296,6 +334,7 @@ class BenchmarkTaskWriter(object):
     def writeEpilogue(cls, sBuffer):
         cls.__exit(sBuffer)
 
+
 class BenchmarkJobWriter(object):
     """
     SLURM specific script.
@@ -309,19 +348,24 @@ class BenchmarkJobWriter(object):
     NOTE: the wait feature requires that all task
     scripts have a return code, or will hang forever!
     """
+
     @staticmethod
     def __initHeader(sBuffer):
         sBuffer.writeComment("!/bin/bash")
         sBuffer.writeComment("Benchmark batch job script")
-        sBuffer.writeComment("This script will configure and submit a batch job to the cluster")
+        sBuffer.writeComment(
+            "This script will configure and submit a batch job to the cluster"
+        )
         sBuffer.writeComment("This is the SLURM cluster benchmark entry-point")
         sBuffer.writeLine("")
 
     @staticmethod
     def __initializeFuncs(sBuffer):
         sBuffer.writeComment("Funcs")
-        sBuffer.writeLine("usage() { echo \"Usage: $0 [-i <image_dir>] [-l <logs_dir>] [-r <results_dir>] [-s <path_to_task_script>] [-t <tasks_dir>] \" 1>&2; exit 1; }")
-        sBuffer.writeLine("failAndExit() { echo \"FAILED: $1\" 1>&2; exit 1; }")
+        sBuffer.writeLine(
+            'usage() { echo "Usage: $0 [-i <image_dir>] [-l <logs_dir>] [-r <results_dir>] [-s <path_to_task_script>] [-t <tasks_dir>] " 1>&2; exit 1; }'
+        )
+        sBuffer.writeLine('failAndExit() { echo "FAILED: $1" 1>&2; exit 1; }')
         sBuffer.writeLine("")
 
     @staticmethod
@@ -329,7 +373,7 @@ class BenchmarkJobWriter(object):
         sBuffer.writeComment("Parse arguments")
         sBuffer.writeLine("while getopts i:l:r:s:t: flag")
         sBuffer.writeLine("do")
-        sBuffer.writeLine("    case \"${flag}\" in")
+        sBuffer.writeLine('    case "${flag}" in')
         sBuffer.writeLine("        i) imageDir=${OPTARG};;")
         sBuffer.writeLine("        l) logsDir=${OPTARG};;")
         sBuffer.writeLine("        r) resultsDir=${OPTARG};;")
@@ -338,9 +382,15 @@ class BenchmarkJobWriter(object):
         sBuffer.writeLine("        *) usage;;")
         sBuffer.writeLine("    esac")
         sBuffer.writeLine("done")
-        sBuffer.writeLine("[ -z \"${imageDir}\" ] || [ -z \"${logsDir}\" ] || [ -z \"${resultsDir}\" ] || [ -z \"${tasksDir}\" ]  && usage;")
-        sBuffer.writeLine("[ -d \"${imageDir}\" ] && [ -d \"${logsDir}\" ] && [ -d \"${resultsDir}\" ] && [ -d \"${tasksDir}\" ] || failAndExit \"Directory not found\";")
-        sBuffer.writeLine("[ -f \"${taskScript}\" ] || failAndExit \"Task script not found\";")
+        sBuffer.writeLine(
+            '[ -z "${imageDir}" ] || [ -z "${logsDir}" ] || [ -z "${resultsDir}" ] || [ -z "${tasksDir}" ]  && usage;'
+        )
+        sBuffer.writeLine(
+            '[ -d "${imageDir}" ] && [ -d "${logsDir}" ] && [ -d "${resultsDir}" ] && [ -d "${tasksDir}" ] || failAndExit "Directory not found";'
+        )
+        sBuffer.writeLine(
+            '[ -f "${taskScript}" ] || failAndExit "Task script not found";'
+        )
         sBuffer.writeEcho("Image dir: $imageDir")
         sBuffer.writeEcho("Logs dir: $logsDir")
         sBuffer.writeEcho("Tasks dir: $tasksDir")
@@ -352,11 +402,15 @@ class BenchmarkJobWriter(object):
     def __configureJob(sBuffer):
         sBuffer.writeComment("Setup local environment")
         sBuffer.writeComment("Get in the directory where this script lives")
-        sBuffer.writeLine("pushd $( dirname `greadlink -f ${BASH_SOURCE[0]} || readlink -f ${BASH_SOURCE[0]}` )")
-        sBuffer.writeComment("Enumerate the tasks and set up batch params based on task count")
+        sBuffer.writeLine(
+            "pushd $( dirname `greadlink -f ${BASH_SOURCE[0]} || readlink -f ${BASH_SOURCE[0]}` )"
+        )
+        sBuffer.writeComment(
+            "Enumerate the tasks and set up batch params based on task count"
+        )
         sBuffer.writeLine("subDirs=($tasksDir/*)")
         sBuffer.writeLine("let arraySize=${#subDirs[@]}")
-        sBuffer.writeLine("[ -z \"${arraySize}\" ] && failAndExit \"No task count\";")
+        sBuffer.writeLine('[ -z "${arraySize}" ] && failAndExit "No task count";')
         sBuffer.writeLine("let arrayStart=0")
         sBuffer.writeLine("let arrayEnd=$arraySize-1")
         sBuffer.writeComment("Create logs directory for SLURM")
@@ -368,7 +422,9 @@ class BenchmarkJobWriter(object):
     def __submitJob(sBuffer):
         sBuffer.writeComment("Invoke batch request to SLURM")
         sBuffer.writeComment("Will wait until the task completes before exiting")
-        sBuffer.writeLine("runCmd=\"sbatch --nodes=1 --array=$arrayStart-$arrayEnd -o $slurmLogsDir/slurm-%A_%a.out --wait $taskScript -i $imageDir -l $logsDir -r $resultsDir -t $tasksDir\"")
+        sBuffer.writeLine(
+            'runCmd="sbatch --nodes=1 --array=$arrayStart-$arrayEnd -o $slurmLogsDir/slurm-%A_%a.out --wait $taskScript -i $imageDir -l $logsDir -r $resultsDir -t $tasksDir"'
+        )
         sBuffer.writeEcho("Submitting batch job to SLURM. This may take a while...")
         sBuffer.writeEcho("$runCmd")
         sBuffer.writeLine("$runCmd")

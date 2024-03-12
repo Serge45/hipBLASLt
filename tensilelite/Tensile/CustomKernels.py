@@ -28,43 +28,69 @@ import yaml
 
 import os
 
+
 def isCustomKernelConfig(config):
     return "CustomKernelName" in config and config["CustomKernelName"]
+
 
 def getCustomKernelFilepath(name, directory=globalParameters["CustomKernelDirectory"]):
     return os.path.join(directory, (name + ".s"))
 
+
 def getAllCustomKernelNames(directory=globalParameters["CustomKernelDirectory"]):
     return [fname[:-2] for fname in os.listdir(directory) if fname.endswith(".s")]
+
 
 def getCustomKernelContents(name, directory=globalParameters["CustomKernelDirectory"]):
     try:
         with open(getCustomKernelFilepath(name, directory)) as f:
             return f.read()
     except:
-        raise RuntimeError("Failed to find custom kernel: {}".format(os.path.join(directory, name)))
+        raise RuntimeError(
+            "Failed to find custom kernel: {}".format(os.path.join(directory, name))
+        )
 
-def getCustomKernelConfigAndAssembly(name, directory=globalParameters["CustomKernelDirectory"]):
-    contents  = getCustomKernelContents(name, directory)
-    config = "\n"    #Yaml configuration properties
+
+def getCustomKernelConfigAndAssembly(
+    name, directory=globalParameters["CustomKernelDirectory"]
+):
+    contents = getCustomKernelContents(name, directory)
+    config = "\n"  # Yaml configuration properties
     assembly = ""
     inConfig = False
     for line in contents.splitlines():
-        if   line == "---": inConfig = True                          #Beginning of yaml section
-        elif line == "...": inConfig = False                         #End of yaml section
-        elif      inConfig: config   += line + "\n"
-        else              : assembly += line + "\n"; config += "\n"  #Second statement to keep line numbers consistent for yaml errors
+        if line == "---":
+            inConfig = True  # Beginning of yaml section
+        elif line == "...":
+            inConfig = False  # End of yaml section
+        elif inConfig:
+            config += line + "\n"
+        else:
+            assembly += line + "\n"
+            config += (
+                "\n"  # Second statement to keep line numbers consistent for yaml errors
+            )
 
     return (config, assembly)
+
 
 def readCustomKernelConfig(name, directory=globalParameters["CustomKernelDirectory"]):
     rawConfig, _ = getCustomKernelConfigAndAssembly(name, directory)
     try:
         return yaml.safe_load(rawConfig)["custom.config"]
     except yaml.scanner.ScannerError as e:
-        raise RuntimeError("Failed to read configuration for custom kernel: {0}\nDetails:\n{1}".format(name, e))
+        raise RuntimeError(
+            "Failed to read configuration for custom kernel: {0}\nDetails:\n{1}".format(
+                name, e
+            )
+        )
 
-def getCustomKernelConfig(kernelName, internalSupportParams, directory=globalParameters["CustomKernelDirectory"]):
+
+def getCustomKernelConfig(
+    kernelName,
+    internalSupportParams,
+    directory=globalParameters["CustomKernelDirectory"],
+):
     kernelConfig = readCustomKernelConfig(kernelName, directory)
     if "InternalSupportParams" not in kernelConfig:
         kernelConfig["InternalSupportParams"] = internalSupportParams

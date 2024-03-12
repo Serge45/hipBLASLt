@@ -30,29 +30,34 @@ __TI_DEBUG_LEVEL__ = 0
 # Text format
 ########################################
 
+
 def slash(comment):
     """
     This comment is a single line // MYCOMMENT
     """
-    return "// %s\n"%comment
+    return "// %s\n" % comment
+
 
 def slash50(comment):
     """
     This comment is a single line // MYCOMMENT
     """
-    return "%-50s // %s\n"%("", comment)
+    return "%-50s // %s\n" % ("", comment)
+
 
 def block(comment):
     """
     This comment is a single line /* MYCOMMENT  */
     """
-    return "/* %s */\n"%comment
+    return "/* %s */\n" % comment
+
 
 def blockNewLine(comment):
     """
     This comment is a blank line followed by /* MYCOMMENT  */
     """
-    return "\n/* %s */\n"%comment
+    return "\n/* %s */\n" % comment
+
 
 def block3Line(comment):
     kStr = "\n/******************************************/\n"
@@ -63,41 +68,49 @@ def block3Line(comment):
     kStr += "/******************************************/\n"
     return kStr
 
+
 ########################################
 # format string with comment
 ########################################
 
+
 def formatStr(outputInlineAsm, instStr, comment) -> str:
-    instStr = "\"%s"%instStr if outputInlineAsm else instStr
+    instStr = '"%s' % instStr if outputInlineAsm else instStr
     if outputInlineAsm:
-        instStr += "\\n\\t\""
+        instStr += '\\n\\t"'
     if comment:
         return "%-50s // %s\n" % (instStr, comment)
     else:
         return "%s\n" % (instStr)
 
+
 ########################################
 # Terminal output
 ########################################
+
 
 def print1(message):
     if __TI_DEBUG_LEVEL__ >= 1:
         print(message)
         sys.stdout.flush()
 
+
 def print2(message):
     if __TI_DEBUG_LEVEL__ >= 2:
         print(message)
         sys.stdout.flush()
 
+
 def printWarning(message):
     print("TensileInstructions::WARNING: %s" % message)
     sys.stdout.flush()
+
 
 def printExit(message):
     print("TensileInstructions::FATAL: %s" % message)
     sys.stdout.flush()
     sys.exit(-1)
+
 
 def printAssert(message):
     print("TensileInstructions::FATAL: %s" % message)

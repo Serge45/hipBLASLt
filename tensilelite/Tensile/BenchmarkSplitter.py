@@ -27,8 +27,8 @@ import copy
 import yaml
 import math
 
-class BenchmarkSplitter(object):
 
+class BenchmarkSplitter(object):
     """
     Benchmark splitter class
     Loads in a benchmark yaml file and splits
@@ -67,14 +67,16 @@ class BenchmarkSplitter(object):
         rv = []
         problemKey = "BenchmarkProblems"
 
-        assert len(data[problemKey]) == 1, "Config file must have one BenchmarkProblems group"
+        assert (
+            len(data[problemKey]) == 1
+        ), "Config file must have one BenchmarkProblems group"
 
         benchmarkProblems = data[problemKey][0]
 
         # Find the index of the problem type group
         problemIdx = -1
         for i in range(len(benchmarkProblems)):
-            if("OperationType" in benchmarkProblems[i].keys()):
+            if "OperationType" in benchmarkProblems[i].keys():
                 problemIdx = i
                 break
 
@@ -87,8 +89,12 @@ class BenchmarkSplitter(object):
                 for k in data.keys():
                     if k == problemKey:
                         # Take only the problem group and one benchmarkgroup
-                        result[k] = [[copy.deepcopy(benchmarkProblems[problemIdx]), \
-                                    copy.deepcopy(benchmarkProblems[i])]]
+                        result[k] = [
+                            [
+                                copy.deepcopy(benchmarkProblems[problemIdx]),
+                                copy.deepcopy(benchmarkProblems[i]),
+                            ]
+                        ]
                     else:
                         # copy other sections verbatim
                         result[k] = copy.deepcopy(data[k])
@@ -104,7 +110,9 @@ class BenchmarkSplitter(object):
         rv = []
         problemKey = "BenchmarkProblems"
 
-        assert len(data[problemKey]) == 1, "Config file must have one BenchmarkProblems group"
+        assert (
+            len(data[problemKey]) == 1
+        ), "Config file must have one BenchmarkProblems group"
 
         benchmarkProblems = data[problemKey][0]
 
@@ -114,23 +122,26 @@ class BenchmarkSplitter(object):
         benchmarkIdx = -1
         for i in range(len(benchmarkProblems)):
             groupKeys = benchmarkProblems[i].keys()
-            if("OperationType" in groupKeys):
+            if "OperationType" in groupKeys:
                 problemIdx = i
-            elif("BenchmarkFinalParameters" in groupKeys):
+            elif "BenchmarkFinalParameters" in groupKeys:
                 benchmarkIdx = i
 
-        assert len(benchmarkProblems) == 2 \
-            and problemIdx is not -1 \
-            and benchmarkIdx is not -1, \
-            "Config file must have one ProblemType group and one Benchmark group"
+        assert (
+            len(benchmarkProblems) == 2
+            and problemIdx is not -1
+            and benchmarkIdx is not -1
+        ), "Config file must have one ProblemType group and one Benchmark group"
 
         # Grab the problem sizes from the Benchmark group
         benchmarkGroup = benchmarkProblems[benchmarkIdx]
-        assert "ProblemSizes" in benchmarkGroup["BenchmarkFinalParameters"][0] \
-                and len(benchmarkGroup["BenchmarkFinalParameters"][0]["ProblemSizes"]), \
-                "Benchmark group must have non-empty ProblemSizes"
+        assert "ProblemSizes" in benchmarkGroup["BenchmarkFinalParameters"][0] and len(
+            benchmarkGroup["BenchmarkFinalParameters"][0]["ProblemSizes"]
+        ), "Benchmark group must have non-empty ProblemSizes"
 
-        problemSizesGroup = benchmarkGroup["BenchmarkFinalParameters"][0]["ProblemSizes"]
+        problemSizesGroup = benchmarkGroup["BenchmarkFinalParameters"][0][
+            "ProblemSizes"
+        ]
         problemSizesCount = len(problemSizesGroup)
 
         numFiles = math.ceil(problemSizesCount / numSizes)
@@ -145,13 +156,22 @@ class BenchmarkSplitter(object):
                     newBenchmarkGroup = {}
                     for bk in benchmarkGroup.keys():
                         if bk == "BenchmarkFinalParameters":
-                            newBenchmarkGroup[bk] = [ {"ProblemSizes": [] } ]
-                            for j in range(i*numSizes, min((i+1)*numSizes, problemSizesCount)):
-                                newBenchmarkGroup[bk][0]["ProblemSizes"].append(copy.deepcopy(problemSizesGroup[j]))
+                            newBenchmarkGroup[bk] = [{"ProblemSizes": []}]
+                            for j in range(
+                                i * numSizes, min((i + 1) * numSizes, problemSizesCount)
+                            ):
+                                newBenchmarkGroup[bk][0]["ProblemSizes"].append(
+                                    copy.deepcopy(problemSizesGroup[j])
+                                )
                         else:
                             newBenchmarkGroup[bk] = copy.deepcopy(benchmarkGroup[bk])
 
-                    result[k] = [[copy.deepcopy(benchmarkProblems[problemIdx]), copy.deepcopy(newBenchmarkGroup)]]
+                    result[k] = [
+                        [
+                            copy.deepcopy(benchmarkProblems[problemIdx]),
+                            copy.deepcopy(newBenchmarkGroup),
+                        ]
+                    ]
                 else:
                     result[k] = copy.deepcopy(data[k])
             rv.append(result)
@@ -168,7 +188,14 @@ class BenchmarkSplitter(object):
         return root + suffixString + ext
 
     @staticmethod
-    def splitBenchmarkBySizes(configFile, outputDir, numSizes=1, baseFileName="", separator="_", suffixFormat="{:02}"):
+    def splitBenchmarkBySizes(
+        configFile,
+        outputDir,
+        numSizes=1,
+        baseFileName="",
+        separator="_",
+        suffixFormat="{:02}",
+    ):
 
         # Use the configFile as base name if none provided
         if baseFileName == "":
@@ -184,11 +211,15 @@ class BenchmarkSplitter(object):
         for problem in benchmarksByProblem:
             benchmarksByGroup += BenchmarkSplitter.__splitByBenchmarkGroup(problem)
         for group in benchmarksByGroup:
-            benchmarksBySize += BenchmarkSplitter.__splitByBenchmarkSizes(group, numSizes)
+            benchmarksBySize += BenchmarkSplitter.__splitByBenchmarkSizes(
+                group, numSizes
+            )
 
         # outputDir/basefileName_XX.ext
         outputFileBase = os.path.join(outputDir, baseFileName)
         for i in range(len(benchmarksBySize)):
-            outFileName = BenchmarkSplitter.__appendFileNameSuffix(outputFileBase, i, separator, suffixFormat)
+            outFileName = BenchmarkSplitter.__appendFileNameSuffix(
+                outputFileBase, i, separator, suffixFormat
+            )
             with open(outFileName, "w") as f:
                 yaml.safe_dump(benchmarksBySize[i], f)

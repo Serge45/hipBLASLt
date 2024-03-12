@@ -32,30 +32,35 @@ from .SolutionStructs import Solution as OriginalSolution
 from .Utils import state, state_key_ordering
 
 from . import Common
-from . Common import globalParameters
+from .Common import globalParameters
+
 
 @state_key_ordering
 class FreeIndex:
-    StateKeys = ['isA', 'i', 'c', 'd']
+    StateKeys = ["isA", "i", "c", "d"]
 
     def __init__(self, isA, i=None, c=None, d=None):
         self.isA = isA
-        self.i = i # index into A or B (depending on isA)
+        self.i = i  # index into A or B (depending on isA)
         self.c = c
         self.d = d
 
+
 @state_key_ordering
 class BatchIndex:
-    StateKeys = ['a', 'b', 'c', 'd']
+    StateKeys = ["a", "b", "c", "d"]
+
     def __init__(self, a=None, b=None, c=None, d=None):
         self.a = a
         self.b = b
         self.c = c
         self.d = d
 
+
 @state_key_ordering
 class BoundIndex:
-    StateKeys = ['a', 'b', 'aMirror', 'bMirror']
+    StateKeys = ["a", "b", "aMirror", "bMirror"]
+
     def __init__(self, a=None, b=None, aMirror=False, bMirror=False):
         self.a = a
         self.b = b
@@ -64,50 +69,85 @@ class BoundIndex:
 
 
 class ProblemType:
-    StateKeys = ['operationIdentifier', 'transA', 'transB', 'computeInputType', 'aType', 'bType', 'cType', 'dType', 'eType', 'computeType',
-                 'useBeta', 'useBias', 'biasSrcWhiteList', 'useE', 'useScaleAB', 'useScaleCD', 'useScaleAlphaVec', 'biasDataTypeWhiteList',
-                 'highPrecisionAccumulate', 'useInitialStridesAB', 'useInitialStridesCD', 'stridedBatched', 'groupedGemm',
-                 'useGradient', 'activationType', 'activationArgLength', 'activationComputeDataType', 'activationNoGuard',
-                 'sparse', 'f32XdlMathOp', 'supportDeviceUserArguments']
+    StateKeys = [
+        "operationIdentifier",
+        "transA",
+        "transB",
+        "computeInputType",
+        "aType",
+        "bType",
+        "cType",
+        "dType",
+        "eType",
+        "computeType",
+        "useBeta",
+        "useBias",
+        "biasSrcWhiteList",
+        "useE",
+        "useScaleAB",
+        "useScaleCD",
+        "useScaleAlphaVec",
+        "biasDataTypeWhiteList",
+        "highPrecisionAccumulate",
+        "useInitialStridesAB",
+        "useInitialStridesCD",
+        "stridedBatched",
+        "groupedGemm",
+        "useGradient",
+        "activationType",
+        "activationArgLength",
+        "activationComputeDataType",
+        "activationNoGuard",
+        "sparse",
+        "f32XdlMathOp",
+        "supportDeviceUserArguments",
+    ]
+
     @classmethod
     def FromOriginalState(cls, d):
-        indices = [None]*d['TotalIndices']
-        freeIndices  = []
+        indices = [None] * d["TotalIndices"]
+        freeIndices = []
         batchIndices = []
         boundIndices = []
 
-        for i in d['IndicesSummation']:
-            bi = BoundIndex(aMirror=('MirrorDimsA' in d and i in d['MirrorDimsA']),
-                            bMirror=('MirrorDimsB' in d and i in d['MirrorDimsB']))
+        for i in d["IndicesSummation"]:
+            bi = BoundIndex(
+                aMirror=("MirrorDimsA" in d and i in d["MirrorDimsA"]),
+                bMirror=("MirrorDimsB" in d and i in d["MirrorDimsB"]),
+            )
             indices[i] = bi
             boundIndices.append(bi)
 
-        for i in range(0,d["NumIndicesC"]):
-            if i in d['IndicesBatch']:
+        for i in range(0, d["NumIndicesC"]):
+            if i in d["IndicesBatch"]:
                 bi = BatchIndex(c=i, d=i)
                 indices[i] = bi
                 batchIndices.append(bi)
             else:
-                assert i in d['IndicesFree']
-                if i in d['IndexAssignmentsA']:
-                    fi = FreeIndex(isA=True, i=d["IndexAssignmentsA"].index(i), c=i, d=i)
-                elif i in d['IndexAssignmentsB']:
-                    fi = FreeIndex(isA=False, i=d["IndexAssignmentsB"].index(i), c=i, d=i)
+                assert i in d["IndicesFree"]
+                if i in d["IndexAssignmentsA"]:
+                    fi = FreeIndex(
+                        isA=True, i=d["IndexAssignmentsA"].index(i), c=i, d=i
+                    )
+                elif i in d["IndexAssignmentsB"]:
+                    fi = FreeIndex(
+                        isA=False, i=d["IndexAssignmentsB"].index(i), c=i, d=i
+                    )
                 else:
-                    raise RuntimeError("free index %u not in ia or ib"%i)
+                    raise RuntimeError("free index %u not in ia or ib" % i)
                 indices[i] = fi
                 freeIndices.append(fi)
 
-        for ia, ic in enumerate(d['IndexAssignmentsA']):
+        for ia, ic in enumerate(d["IndexAssignmentsA"]):
             indices[ic].a = ia
 
-        for ib, ic in enumerate(d['IndexAssignmentsB']):
+        for ib, ic in enumerate(d["IndexAssignmentsB"]):
             indices[ic].b = ib
 
         for idx in indices:
             assert idx is not None
             idxState = state(idx)
-            for (key, value) in list(idxState.items()):
+            for key, value in list(idxState.items()):
                 assert value is not None
 
         rv = cls()
@@ -115,30 +155,32 @@ class ProblemType:
         rv.freeIndices = freeIndices
         rv.batchIndices = batchIndices
         rv.boundIndices = boundIndices
-        rv.aDims = len(d['IndexAssignmentsA'])
-        rv.bDims = len(d['IndexAssignmentsB'])
-        rv.cDims = d['NumIndicesC']
+        rv.aDims = len(d["IndexAssignmentsA"])
+        rv.bDims = len(d["IndexAssignmentsB"])
+        rv.cDims = d["NumIndicesC"]
         rv.dDims = rv.cDims
 
-        rv.aConjugate = d['ComplexConjugateA']
-        rv.bConjugate = d['ComplexConjugateB']
+        rv.aConjugate = d["ComplexConjugateA"]
+        rv.bConjugate = d["ComplexConjugateB"]
 
-        srcType = DataType(d['DataType'])
-        dstType = DataType(d['DestDataType']) if 'DestDataType' in d else srcType
-        computeType = DataType(d['ComputeDataType']) if 'ComputeDataType' in d else dstType
+        srcType = DataType(d["DataType"])
+        dstType = DataType(d["DestDataType"]) if "DestDataType" in d else srcType
+        computeType = (
+            DataType(d["ComputeDataType"]) if "ComputeDataType" in d else dstType
+        )
 
-        rv.transA = bool(d['TransposeA'])
-        rv.transB = bool(d['TransposeB'])
-        if 'DataTypeA' in d:
-            rv.aType = DataType(d['DataTypeA'])
+        rv.transA = bool(d["TransposeA"])
+        rv.transB = bool(d["TransposeB"])
+        if "DataTypeA" in d:
+            rv.aType = DataType(d["DataTypeA"])
         else:
             rv.aType = srcType
-        if 'DataTypeB' in d:
-            rv.bType = DataType(d['DataTypeB'])
+        if "DataTypeB" in d:
+            rv.bType = DataType(d["DataTypeB"])
         else:
             rv.bType = srcType
-        if 'DataTypeE' in d:
-            rv.eType = DataType(d['DataTypeE'])
+        if "DataTypeE" in d:
+            rv.eType = DataType(d["DataTypeE"])
         else:
             rv.eType = dstType
         # for hybrid 8bit float types, we need to split the type into a_type and b_type
@@ -154,103 +196,114 @@ class ProblemType:
         rv.dType = dstType
         # we already checked the src/dst/compute types are supported and well-assigned in SolutionStruct
         rv.alphaType = computeType
-        rv.betaType  = computeType
+        rv.betaType = computeType
         rv.computeType = computeType
 
         rv.highPrecisionAccumulate = False
-        if 'HighPrecisionAccumulate' in d:
-            rv.highPrecisionAccumulate = d['HighPrecisionAccumulate']
+        if "HighPrecisionAccumulate" in d:
+            rv.highPrecisionAccumulate = d["HighPrecisionAccumulate"]
 
         rv.useInitialStridesAB = False
-        if 'UseInitialStridesAB' in d:
-            rv.useInitialStridesAB = d['UseInitialStridesAB']
+        if "UseInitialStridesAB" in d:
+            rv.useInitialStridesAB = d["UseInitialStridesAB"]
         rv.useInitialStridesCD = False
-        if 'UseInitialStridesCD' in d:
-            rv.useInitialStridesCD = d['UseInitialStridesCD']
+        if "UseInitialStridesCD" in d:
+            rv.useInitialStridesCD = d["UseInitialStridesCD"]
 
         rv.stridedBatched = True
-        if 'StridedBatched' in d:
-          rv.stridedBatched = d['StridedBatched']
+        if "StridedBatched" in d:
+            rv.stridedBatched = d["StridedBatched"]
 
         rv.groupedGemm = False
-        if 'GroupedGemm' in d:
-          rv.groupedGemm = d['GroupedGemm']
+        if "GroupedGemm" in d:
+            rv.groupedGemm = d["GroupedGemm"]
 
         rv.setConstStrideA = []
-        if 'SetConstStrideA' in d:
-            rv.setConstStrideA = d['SetConstStrideA']
+        if "SetConstStrideA" in d:
+            rv.setConstStrideA = d["SetConstStrideA"]
         rv.setConstStrideB = []
-        if 'SetConstStrideB' in d:
-            rv.setConstStrideB = d['SetConstStrideB']
+        if "SetConstStrideB" in d:
+            rv.setConstStrideB = d["SetConstStrideB"]
 
-        rv.mirrorDimsA = d['MirrorDimsA'] if 'MirrorDimsA' in d else []
-        rv.mirrorDimsB = d['MirrorDimsB'] if 'MirrorDimsB' in d else []
+        rv.mirrorDimsA = d["MirrorDimsA"] if "MirrorDimsA" in d else []
+        rv.mirrorDimsB = d["MirrorDimsB"] if "MirrorDimsB" in d else []
 
         rv.useBeta = True
-        if 'UseBeta' in d:
-            rv.useBeta = d['UseBeta']
+        if "UseBeta" in d:
+            rv.useBeta = d["UseBeta"]
 
-        rv.useBias               = 0
+        rv.useBias = 0
         rv.biasDataTypeWhiteList = []
         rv.biasSrcWhiteList = []
         rv.setConstStrideBias = []
 
-        if 'UseBias' in d:
-            rv.useBias = d['UseBias']
-            if 'BiasDataTypeList' in d:
+        if "UseBias" in d:
+            rv.useBias = d["UseBias"]
+            if "BiasDataTypeList" in d:
                 d["BiasDataTypeList"].sort()  # Sort to make sure names are unique
-                rv.biasDataTypeWhiteList = d['BiasDataTypeList']
+                rv.biasDataTypeWhiteList = d["BiasDataTypeList"]
             else:
                 rv.biasDataTypeWhiteList = getBiasDataTypeListDefault(d)
-            if 'BiasSrc' in d:
+            if "BiasSrc" in d:
                 m = ["A", "B", "C", "D"]
-                rv.biasSrcWhiteList = [m.index(d['BiasSrc'])]
-            if 'SetConstStrideBias' in d:
-                rv.setConstStrideBias = d['SetConstStrideBias']
+                rv.biasSrcWhiteList = [m.index(d["BiasSrc"])]
+            if "SetConstStrideBias" in d:
+                rv.setConstStrideBias = d["SetConstStrideBias"]
 
         rv.useE = False
-        if 'UseE' in d:
-            rv.useE = d['UseE']
+        if "UseE" in d:
+            rv.useE = d["UseE"]
 
         rv.useGradient = False
-        if 'Gradient' in d:
+        if "Gradient" in d:
             rv.useGradient = d["Gradient"]
 
         rv.useScaleAB = False
-        if 'UseScaleAB' in d:
-            rv.useScaleAB = d['UseScaleAB']
+        if "UseScaleAB" in d:
+            rv.useScaleAB = d["UseScaleAB"]
         rv.useScaleCD = False
-        if 'UseScaleCD' in d:
-            rv.useScaleCD = d['UseScaleCD']
+        if "UseScaleCD" in d:
+            rv.useScaleCD = d["UseScaleCD"]
 
         rv.useScaleAlphaVec = False
-        if 'UseScaleAlphaVec' in d:
-            rv.useScaleAlphaVec = d['UseScaleAlphaVec']
+        if "UseScaleAlphaVec" in d:
+            rv.useScaleAlphaVec = d["UseScaleAlphaVec"]
 
-        rv.batched = d['Batched']
+        rv.batched = d["Batched"]
 
-        rv.activationType      = ActivationType('none')
+        rv.activationType = ActivationType("none")
         rv.activationArgLength = 0
-        if 'ActivationType' in d:
-            rv.activationType = ActivationType(d['ActivationType'])
+        if "ActivationType" in d:
+            rv.activationType = ActivationType(d["ActivationType"])
             rv.activationArgLength = len(rv.activationType.getAdditionalArgStringList())
-        rv.activationComputeDataType = DataType(d['ActivationComputeDataType'])
+        rv.activationComputeDataType = DataType(d["ActivationComputeDataType"])
         rv.activationNoGuard = False
-        if 'ActivationNoGuard' in d:
+        if "ActivationNoGuard" in d:
             rv.activationNoGuard = d["ActivationNoGuard"]
         rv.sparse = 0
-        if 'Sparse' in d:
-            rv.sparse = int(d['Sparse'])
+        if "Sparse" in d:
+            rv.sparse = int(d["Sparse"])
 
-        rv.f32XdlMathOp = DataType(d['F32XdlMathOp']) if 'F32XdlMathOp' in d else DataType(0)
+        rv.f32XdlMathOp = (
+            DataType(d["F32XdlMathOp"]) if "F32XdlMathOp" in d else DataType(0)
+        )
 
         rv.supportDeviceUserArguments = False
-        if 'SupportUserArgs' in d:
-            rv.supportDeviceUserArguments = d['SupportUserArgs']
+        if "SupportUserArgs" in d:
+            rv.supportDeviceUserArguments = d["SupportUserArgs"]
         return rv
 
-    def __init__(self, freeIndices=None, batchIndices=None, boundIndices=None, aDims=None, bDims=None, cDims=None, dDims=None):
-        self.freeIndices  = freeIndices
+    def __init__(
+        self,
+        freeIndices=None,
+        batchIndices=None,
+        boundIndices=None,
+        aDims=None,
+        bDims=None,
+        cDims=None,
+        dDims=None,
+    ):
+        self.freeIndices = freeIndices
         self.batchIndices = batchIndices
         self.boundIndices = boundIndices
         self.aDims = aDims
@@ -260,24 +313,26 @@ class ProblemType:
 
     @property
     def indexNames(self):
-        aNames = ['_'] * self.aDims
-        bNames = ['_'] * self.bDims
-        cNames = ['_'] * self.cDims
+        aNames = ["_"] * self.aDims
+        bNames = ["_"] * self.bDims
+        cNames = ["_"] * self.cDims
 
-        allIndexNames = 'ijklmnopqrstuvwxyz'
+        allIndexNames = "ijklmnopqrstuvwxyz"
         index = 0
 
-        dNames = list([allIndexNames[index+i] for i in range(self.cDims)])
+        dNames = list([allIndexNames[index + i] for i in range(self.cDims)])
         index += len(dNames)
 
-        sumNames = list([allIndexNames[index+i] for i in range(len(self.boundIndices))])
+        sumNames = list(
+            [allIndexNames[index + i] for i in range(len(self.boundIndices))]
+        )
         index += len(sumNames)
 
         for free in self.freeIndices:
             if free.isA:
-                aNames[free.i ] = dNames[free.d]
+                aNames[free.i] = dNames[free.d]
             else:
-                bNames[free.i ] = dNames[free.d]
+                bNames[free.i] = dNames[free.d]
             cNames[free.c] = dNames[free.d]
 
         for batch in self.batchIndices:
@@ -291,11 +346,11 @@ class ProblemType:
             aNames[bound.a] = name.upper() if bound.aMirror else name
             bNames[bound.b] = name.upper() if bound.bMirror else name
 
-        aNames = ''.join(aNames)
-        bNames = ''.join(bNames)
-        cNames = ''.join(cNames)
-        dNames = ''.join(dNames)
-        sumNames = ''.join(sumNames)
+        aNames = "".join(aNames)
+        bNames = "".join(bNames)
+        cNames = "".join(cNames)
+        dNames = "".join(dNames)
+        sumNames = "".join(sumNames)
 
         return (aNames, bNames, cNames, dNames, sumNames)
 
@@ -303,16 +358,23 @@ class ProblemType:
     def operationIdentifier(self):
         (aNames, bNames, cNames, dNames, sumNames) = self.indexNames
 
-        aOp = 'C' if self.aConjugate else ''
-        bOp = 'C' if self.bConjugate else ''
+        aOp = "C" if self.aConjugate else ""
+        bOp = "C" if self.bConjugate else ""
 
-        return '_'.join(['Contraction', sumNames,
-                         'A' + aNames + aOp,
-                         'B' + bNames + bOp,
-                         'C' + cNames,
-                         'D' + dNames])
+        return "_".join(
+            [
+                "Contraction",
+                sumNames,
+                "A" + aNames + aOp,
+                "B" + bNames + bOp,
+                "C" + cNames,
+                "D" + dNames,
+            ]
+        )
 
-    def placeholderStr(self, includeBatch=False, includeOperation=False, includeType=False):
+    def placeholderStr(
+        self, includeBatch=False, includeOperation=False, includeType=False
+    ):
         ret = ""
         if includeOperation:
             ret = self.operationIdentifier
@@ -320,7 +382,9 @@ class ProblemType:
                 ret += "_Beta0"
             ret += "_StridedBatched{}".format(int(self.stridedBatched))
         if includeType:
-            ret += "_Type_{}{}".format(DataType(self.aType).toChar(), DataType(self.cType).toChar())
+            ret += "_Type_{}{}".format(
+                DataType(self.aType).toChar(), DataType(self.cType).toChar()
+            )
             if self.highPrecisionAccumulate:
                 ret += "_HPA"
 
@@ -329,41 +393,92 @@ class ProblemType:
     def predicates(self, includeBatch=False, includeOperation=False, includeType=False):
         predicates = []
 
-        #if includeBatch and not self.batched:
+        # if includeBatch and not self.batched:
         #    predicates.append(ProblemPredicate("BatchSizeEqual", index=0, value=1))
 
         if includeOperation:
-            predicates.append(ProblemPredicate("OperationIdentifierEqual", value=self.operationIdentifier))
+            predicates.append(
+                ProblemPredicate(
+                    "OperationIdentifierEqual", value=self.operationIdentifier
+                )
+            )
             if not self.useBeta:
                 predicates.append(ProblemPredicate("BetaZero"))
-            predicates.append(ProblemPredicate("BiasDataTypeWhiteList", value=self.biasDataTypeWhiteList))
-            predicates.append(ProblemPredicate("BiasSrcWhiteList", value=self.biasSrcWhiteList))
-            if self.activationType == 'all':
-                exportType = ActivationType.Export.GRADONLY if self.useGradient else ActivationType.Export.NORMAL
-                enumList = [actEnum.capitalize() for actEnum in ActivationType.getEnumStrList(self.activationComputeDataType, exportType=exportType)]
-                predicates.append(ProblemPredicate("ActivationEnumWhiteList", value=enumList))
+            predicates.append(
+                ProblemPredicate(
+                    "BiasDataTypeWhiteList", value=self.biasDataTypeWhiteList
+                )
+            )
+            predicates.append(
+                ProblemPredicate("BiasSrcWhiteList", value=self.biasSrcWhiteList)
+            )
+            if self.activationType == "all":
+                exportType = (
+                    ActivationType.Export.GRADONLY
+                    if self.useGradient
+                    else ActivationType.Export.NORMAL
+                )
+                enumList = [
+                    actEnum.capitalize()
+                    for actEnum in ActivationType.getEnumStrList(
+                        self.activationComputeDataType, exportType=exportType
+                    )
+                ]
+                predicates.append(
+                    ProblemPredicate("ActivationEnumWhiteList", value=enumList)
+                )
             # predicates.append(ProblemPredicate("UseScaleAlphaVec", value=self.useScaleAlphaVec))
             # predicates.append(ProblemPredicate("GroupedGemm", value=self.groupedGemm))
 
         if includeType:
-            predicates.append(ProblemPredicate("TypesEqual", value=(self.aType, self.bType, self.cType, self.dType, self.computeInputType)))
-            predicates.append(ProblemPredicate("HighPrecisionAccumulate", value=self.highPrecisionAccumulate))
+            predicates.append(
+                ProblemPredicate(
+                    "TypesEqual",
+                    value=(
+                        self.aType,
+                        self.bType,
+                        self.cType,
+                        self.dType,
+                        self.computeInputType,
+                    ),
+                )
+            )
+            predicates.append(
+                ProblemPredicate(
+                    "HighPrecisionAccumulate", value=self.highPrecisionAccumulate
+                )
+            )
             predicates.append(ProblemPredicate("Activation", value=self.activationType))
-            predicates.append(ProblemPredicate("ActivationComputeType", value=self.activationComputeDataType))
-            predicates.append(ProblemPredicate("ActivationNoGuard", value=self.activationNoGuard))
+            predicates.append(
+                ProblemPredicate(
+                    "ActivationComputeType", value=self.activationComputeDataType
+                )
+            )
+            predicates.append(
+                ProblemPredicate("ActivationNoGuard", value=self.activationNoGuard)
+            )
             predicates.append(ProblemPredicate("UseGradient", value=self.useGradient))
             predicates.append(ProblemPredicate("UseBias", value=self.useBias))
             predicates.append(ProblemPredicate("UseE", value=self.useE))
-            predicates.append(ProblemPredicate("StridedBatched", value=self.stridedBatched))
+            predicates.append(
+                ProblemPredicate("StridedBatched", value=self.stridedBatched)
+            )
             predicates.append(ProblemPredicate("GroupedGemm", value=self.groupedGemm))
             predicates.append(ProblemPredicate("UseScaleAB", value=self.useScaleAB))
             predicates.append(ProblemPredicate("UseScaleCD", value=self.useScaleCD))
-            predicates.append(ProblemPredicate("UseScaleAlphaVec", value=self.useScaleAlphaVec))
+            predicates.append(
+                ProblemPredicate("UseScaleAlphaVec", value=self.useScaleAlphaVec)
+            )
             predicates.append(ProblemPredicate("Sparse", value=self.sparse))
             predicates.append(ProblemPredicate("F32XdlMathOp", value=self.f32XdlMathOp))
-            predicates.append(ProblemPredicate("SupportDeviceUserArguments", value=self.supportDeviceUserArguments))
+            predicates.append(
+                ProblemPredicate(
+                    "SupportDeviceUserArguments", value=self.supportDeviceUserArguments
+                )
+            )
 
         return predicates
+
 
 def extractDimPredicate(cls, key, value, predicateName):
     """
@@ -371,7 +486,7 @@ def extractDimPredicate(cls, key, value, predicateName):
     Value is a dictionary
     """
     predicates = []
-    for pos,val in value.items():
+    for pos, val in value.items():
         if val != -1:
             predicates.append(cls(predicateName, index=pos, value=val))
     if len(predicates) == 1:
@@ -379,11 +494,12 @@ def extractDimPredicate(cls, key, value, predicateName):
     elif len(predicates) > 1:
         return cls.And(predicates)
 
+
 class ProblemPredicate(Properties.Predicate):
     @classmethod
     def FromOriginalKeyPair(cls, pair):
         (key, value) = pair
-        if key.endswith('Multiple'):
+        if key.endswith("Multiple"):
             if value == 1:
                 return None
 
@@ -404,7 +520,7 @@ class ProblemPredicate(Properties.Predicate):
         if key == "WorkspaceCheck" and (not all(val == 0 for val in value)):
             return cls("WorkspaceCheck", index=0, value=value)
 
-        if key.startswith('Assert'):
+        if key.startswith("Assert"):
             raise RuntimeError("Unknown assertion key: {}".format(key))
 
     @classmethod
@@ -412,67 +528,77 @@ class ProblemPredicate(Properties.Predicate):
         rv = []
 
         if "BatchSizeEqual" in state:
-            rv += [cls('BatchSizeEqual', index=0, value=state["BatchSizeEqual"])]
+            rv += [cls("BatchSizeEqual", index=0, value=state["BatchSizeEqual"])]
 
         if "SynchronizerSizeCheck" in state:
-            valuepredicates = [];
+            valuepredicates = []
             valuepredicates.append(state["MacroTile0"])
             valuepredicates.append(state["MacroTile1"])
             valuepredicates.append(state["NumElementsPerThread"])
             valuepredicates.append(state["StoreVectorWidth"])
             valuepredicates.append(state["NumThreads"])
-            rv += [cls('SynchronizerSizeCheck', index=0, value=valuepredicates)]
+            rv += [cls("SynchronizerSizeCheck", index=0, value=valuepredicates)]
 
         if not problemType.aType.isInt8x4():
             # calculate the minimum supported free dimension size
-            TLUA = state['ProblemType']['TLUA']
-            TLUB = state['ProblemType']['TLUB']
-            minFree0 = state['GlobalReadVectorWidthA'] if TLUA else 1
-            minFree1 = state['GlobalReadVectorWidthB'] if TLUB else 1
-            rv += [cls('LeadingFree0SizesGreaterOrEqual', value=minFree0)]
-            rv += [cls('LeadingFree1SizesGreaterOrEqual', value=minFree1)]
+            TLUA = state["ProblemType"]["TLUA"]
+            TLUB = state["ProblemType"]["TLUB"]
+            minFree0 = state["GlobalReadVectorWidthA"] if TLUA else 1
+            minFree1 = state["GlobalReadVectorWidthB"] if TLUB else 1
+            rv += [cls("LeadingFree0SizesGreaterOrEqual", value=minFree0)]
+            rv += [cls("LeadingFree1SizesGreaterOrEqual", value=minFree1)]
 
         if len(state["PackedC0IndicesX"]) > 1:
-          rv += [cls("CDStridesEqual")]
+            rv += [cls("CDStridesEqual")]
 
         if "KernelLanguage" in state:
             rv += [cls("KernelLanguageCompatible", value=state["KernelLanguage"])]
 
-        if ('GlobalSplitU' in state) and (state['GlobalSplitU'] > 1):
-            if ('_GlobalAccumulation' not in state) or (state['_GlobalAccumulation'] != 'MultipleBuffer'):
-                rv += [cls("DeterministicMode", value = False)]
+        if ("GlobalSplitU" in state) and (state["GlobalSplitU"] > 1):
+            if ("_GlobalAccumulation" not in state) or (
+                state["_GlobalAccumulation"] != "MultipleBuffer"
+            ):
+                rv += [cls("DeterministicMode", value=False)]
 
         # if bufferload is performed, we output some predication info for host side,
         # to prevent from some extremely large problems from launching and causing bufferload offset limit < 2^32
         # thoses cases will not satisfy the assertion thus won't use the kernel.
         # See Common.py for more details, we will need four values:
         # TODO - haven't been fully tested for FP16 and BF, need to verify the false-positive
-        if 'BufferLoad' in state and state['BufferLoad'] == True:
-            TLUA = state['ProblemType']['TLUA']
-            TLUB = state['ProblemType']['TLUB']
-            MayShiftA = TLUA and state['AssertFree0ElementMultiple'] < state['GlobalReadVectorWidthA']
-            MayShiftB = TLUB and state['AssertFree1ElementMultiple'] < state['GlobalReadVectorWidthB']
-            subrv={}
-            subrv['ShiftPtrElemB'] = state['GlobalReadVectorWidthB'] if MayShiftB else 0
-            subrv['ShiftPtrElemA'] = state['GlobalReadVectorWidthA'] if MayShiftA else 0
-            subrv['DUorMT1'] = state['DepthU'] if TLUB else state['MacroTile1']
-            subrv['DUorMT0'] = state['DepthU'] if TLUA else state['MacroTile0']
+        if "BufferLoad" in state and state["BufferLoad"] == True:
+            TLUA = state["ProblemType"]["TLUA"]
+            TLUB = state["ProblemType"]["TLUB"]
+            MayShiftA = (
+                TLUA
+                and state["AssertFree0ElementMultiple"]
+                < state["GlobalReadVectorWidthA"]
+            )
+            MayShiftB = (
+                TLUB
+                and state["AssertFree1ElementMultiple"]
+                < state["GlobalReadVectorWidthB"]
+            )
+            subrv = {}
+            subrv["ShiftPtrElemB"] = state["GlobalReadVectorWidthB"] if MayShiftB else 0
+            subrv["ShiftPtrElemA"] = state["GlobalReadVectorWidthA"] if MayShiftA else 0
+            subrv["DUorMT1"] = state["DepthU"] if TLUB else state["MacroTile1"]
+            subrv["DUorMT0"] = state["DepthU"] if TLUA else state["MacroTile0"]
             # value is also a dict for better readibility, client side need to handel the serialization
-            rv += [cls('BufferLoadOffsetLimitCheck', value=subrv)]
+            rv += [cls("BufferLoadOffsetLimitCheck", value=subrv)]
 
         # When doing globol write, may need to load matrix C if beta !=0
-        if 'BufferLoad' in state and state['BufferLoad'] == True:
-            rv += [cls('BufferLoadOffsetLimitCheck_Beta', value=state['MacroTile1'])]
+        if "BufferLoad" in state and state["BufferLoad"] == True:
+            rv += [cls("BufferLoadOffsetLimitCheck_Beta", value=state["MacroTile1"])]
 
         # similiar check is applied for bufferstore,
         # for bufferstore offset, test if the bot-right offset < 2^32,
         # it should be StrideA*MT1, so we need to output MT1 and use the StrideA of problem in host-side for predication
-        if 'BufferStore' in state and state['BufferStore'] == True:
-            rv += [cls('BufferStoreOffsetLimitCheck', value=state['MacroTile1'])]
+        if "BufferStore" in state and state["BufferStore"] == True:
+            rv += [cls("BufferStoreOffsetLimitCheck", value=state["MacroTile1"])]
 
-        if '_GlobalAccumulation' in state and state['_GlobalAccumulation'] != None:
-            value = globalParameters['MinKForGSU']
-            rv += [cls('GlobalSplitUCheckMinK', value=[value, state["GlobalSplitU"]])]
+        if "_GlobalAccumulation" in state and state["_GlobalAccumulation"] != None:
+            value = globalParameters["MinKForGSU"]
+            rv += [cls("GlobalSplitUCheckMinK", value=[value, state["GlobalSplitU"]])]
 
         return rv
 
@@ -482,31 +608,35 @@ class ProblemPredicate(Properties.Predicate):
         compoundPreds = cls.CompoundPredicates(d, problemType)
         extraPreds = problemTypePreds + compoundPreds + morePreds
 
-        predicates = [p for p in map(cls.FromOriginalKeyPair, d.items()) if p is not None] + extraPreds
+        predicates = [
+            p for p in map(cls.FromOriginalKeyPair, d.items()) if p is not None
+        ] + extraPreds
         return cls.And(predicates)
 
+
 class SizeMapping:
-    StateKeys = ['waveNum',
-                 'workGroup',
-                 'macroTile',
-                 'threadTile',
-                 'depthU',
-                 'staggerU',
-                 'staggerUMapping',
-                 'globalSplitUPGR',
-                 'globalSplitU',
-                 'staggerStrideShift',
-                 'workGroupMapping',
-                 'packBatchDims',
-                 'magicDivAlg',
-                 'sourceKernel',
-                 'globalAccumulation',
-                 'workspaceSizePerElemC',
-                 'workspaceSizePerElemBias',
-                 'activationFused',
-                 'CustomKernelName',
-                 'workGroupMappingXCC'
-                 ]
+    StateKeys = [
+        "waveNum",
+        "workGroup",
+        "macroTile",
+        "threadTile",
+        "depthU",
+        "staggerU",
+        "staggerUMapping",
+        "globalSplitUPGR",
+        "globalSplitU",
+        "staggerStrideShift",
+        "workGroupMapping",
+        "packBatchDims",
+        "magicDivAlg",
+        "sourceKernel",
+        "globalAccumulation",
+        "workspaceSizePerElemC",
+        "workspaceSizePerElemBias",
+        "activationFused",
+        "CustomKernelName",
+        "workGroupMappingXCC",
+    ]
 
     @classmethod
     def FromOriginalState(cls, d):
@@ -517,72 +647,78 @@ class SizeMapping:
         #     globalAccum = 1
         # if d['GlobalSplitUAlgorithm'] == 'MultipleBuffer':
         #     globalAccum = 2
-        if d['_GlobalAccumulation'] == 'MultipleBufferSingleKernel':
+        if d["_GlobalAccumulation"] == "MultipleBufferSingleKernel":
             globalAccum = 3
-        return cls(waveNum                  = d['NumThreads'] // d['WavefrontSize'],
-                   workGroup                = d['WorkGroup'],
-                   macroTile                = cls.ReadOriginalMacroTile(d),
-                   threadTile               = d['ThreadTile'],
-                   workGroupMapping         = d['WorkGroupMapping'],
-                   staggerU                 = d['StaggerU'] if 'StaggerU' in d else 0,
-                   staggerUMapping          = d['StaggerUMapping'] if 'StaggerUMapping' in d else 0,
-                   depthU                   = d['DepthU'],
-                   globalSplitUPGR          = internalParameters["GlobalSplitUPGR"],
-                   globalSplitU             = d['GlobalSplitU'],
-                   staggerStrideShift       = d['_staggerStrideShift'] if '_staggerStrideShift' in d else 0,
-                   packBatchDims            = 0,
-                   magicDivAlg              = d.get('MagicDivAlg', 1),
-                   sourceKernel             = d['KernelLanguage'] == 'Source',
-                   globalAccumulation       = globalAccum,
-                   workspaceSizePerElemC    = d['_WorkspaceSizePerElemC'],
-                   workspaceSizePerElemBias = d['_WorkspaceSizePerElemBias'],
-                   activationFused          = d['ActivationFused'],
-                   CustomKernelName         = d['CustomKernelName'],
-                   workGroupMappingXCC      = d['WorkGroupMappingXCC']
-                   )
+        return cls(
+            waveNum=d["NumThreads"] // d["WavefrontSize"],
+            workGroup=d["WorkGroup"],
+            macroTile=cls.ReadOriginalMacroTile(d),
+            threadTile=d["ThreadTile"],
+            workGroupMapping=d["WorkGroupMapping"],
+            staggerU=d["StaggerU"] if "StaggerU" in d else 0,
+            staggerUMapping=d["StaggerUMapping"] if "StaggerUMapping" in d else 0,
+            depthU=d["DepthU"],
+            globalSplitUPGR=internalParameters["GlobalSplitUPGR"],
+            globalSplitU=d["GlobalSplitU"],
+            staggerStrideShift=(
+                d["_staggerStrideShift"] if "_staggerStrideShift" in d else 0
+            ),
+            packBatchDims=0,
+            magicDivAlg=d.get("MagicDivAlg", 1),
+            sourceKernel=d["KernelLanguage"] == "Source",
+            globalAccumulation=globalAccum,
+            workspaceSizePerElemC=d["_WorkspaceSizePerElemC"],
+            workspaceSizePerElemBias=d["_WorkspaceSizePerElemBias"],
+            activationFused=d["ActivationFused"],
+            CustomKernelName=d["CustomKernelName"],
+            workGroupMappingXCC=d["WorkGroupMappingXCC"],
+        )
 
     @classmethod
     def ReadOriginalMacroTile(cls, d):
-        rv = [1,1,1]
-        rv[0] = d['MacroTile0']
-        rv[1] = d['MacroTile1']
+        rv = [1, 1, 1]
+        rv[0] = d["MacroTile0"]
+        rv[1] = d["MacroTile1"]
         return rv
 
     def __init__(self, **kwargs):
-        for (key, value) in list(kwargs.items()):
+        for key, value in list(kwargs.items()):
             setattr(self, key, value)
 
+
 class InternalArgsSupport:
-    StateKeys = ['gsu',
-                 'wgm',
-                 'staggerU',
-                 'useUniversalArgs']
+    StateKeys = ["gsu", "wgm", "staggerU", "useUniversalArgs"]
 
     @classmethod
     def FromOriginalState(cls, d):
-        return cls(gsu = d['InternalSupportParams']['SupportUserGSU'],
-                   wgm = d['InternalSupportParams']['SupportCustomWGM'],
-                   staggerU = d['InternalSupportParams']['SupportCustomStaggerU'],
-                   useUniversalArgs = d['InternalSupportParams']['UseUniversalArgs'])
+        return cls(
+            gsu=d["InternalSupportParams"]["SupportUserGSU"],
+            wgm=d["InternalSupportParams"]["SupportCustomWGM"],
+            staggerU=d["InternalSupportParams"]["SupportCustomStaggerU"],
+            useUniversalArgs=d["InternalSupportParams"]["UseUniversalArgs"],
+        )
 
     def __init__(self, **kwargs):
-        for (key, value) in list(kwargs.items()):
+        for key, value in list(kwargs.items()):
             setattr(self, key, value)
 
+
 class Solution:
-    StateKeys = ['name',
-                 'kernelName',
-                'problemType',
-                'hardwarePredicate',
-                'problemPredicate',
-                'sizeMapping',
-                'internalArgsSupport',
-                'debugKernel',
-                'libraryLogicIndex',
-                'index',
-                'ideals',
-                'linearModel']
-    HiddenKeys = ['originalSolution']
+    StateKeys = [
+        "name",
+        "kernelName",
+        "problemType",
+        "hardwarePredicate",
+        "problemPredicate",
+        "sizeMapping",
+        "internalArgsSupport",
+        "debugKernel",
+        "libraryLogicIndex",
+        "index",
+        "ideals",
+        "linearModel",
+    ]
+    HiddenKeys = ["originalSolution"]
 
     @classmethod
     def FromSolutionStruct(cls, solution):
@@ -592,22 +728,21 @@ class Solution:
     def FromOriginalState(cls, d, deviceInfo=None):
         rv = cls()
 
+        if "SolutionNameMin" in d:
+            rv.name = d["SolutionNameMin"]
 
-        if 'SolutionNameMin' in d:
-            rv.name = d['SolutionNameMin']
+        if "KernelNameMin" in d:
+            rv.kernelName = d["KernelNameMin"]
 
-        if 'KernelNameMin' in d:
-            rv.kernelName = d['KernelNameMin']
-
-        rv.problemType = ProblemType.FromOriginalState(d['ProblemType'])
+        rv.problemType = ProblemType.FromOriginalState(d["ProblemType"])
 
         rv.problemPredicate = ProblemPredicate.FromOriginalState(d, rv.problemType)
 
-        if 'DebugKernel' in d:
-            rv.debugKernel = d['DebugKernel']
+        if "DebugKernel" in d:
+            rv.debugKernel = d["DebugKernel"]
 
-        if 'SolutionIndex' in d:
-            rv.index = d['SolutionIndex']
+        if "SolutionIndex" in d:
+            rv.index = d["SolutionIndex"]
 
         info = cls.ReadOriginalInfo(d)
         rv.libraryLogicIndex = int(info.get("SolutionIndex", -1))
@@ -616,39 +751,47 @@ class Solution:
 
         rv.internalArgsSupport = InternalArgsSupport.FromOriginalState(d)
 
-        if 'Ideals' in d:
-            rv.ideals = d['Ideals']
+        if "Ideals" in d:
+            rv.ideals = d["Ideals"]
         else:
             rv.ideals = {}
 
-        if 'LinearModel' in d:
-            rv.linearModel = d['LinearModel']
+        if "LinearModel" in d:
+            rv.linearModel = d["LinearModel"]
         else:
             rv.linearModel = {}
 
-        if 'ISA' not in d:
-            if d['KernelLanguage'] == 'Assembly':
-                d['ISA'] = Common.gfxArch(deviceInfo[1])
+        if "ISA" not in d:
+            if d["KernelLanguage"] == "Assembly":
+                d["ISA"] = Common.gfxArch(deviceInfo[1])
             else:
-                d['ISA'] = [0,0,0]
+                d["ISA"] = [0, 0, 0]
 
-        if 'CUCount' not in d:
-            d['CUCount'] = None
+        if "CUCount" not in d:
+            d["CUCount"] = None
 
-        rv.hardwarePredicate = Hardware.HardwarePredicate.FromHardware(d['ISA'], d['CUCount'])
+        rv.hardwarePredicate = Hardware.HardwarePredicate.FromHardware(
+            d["ISA"], d["CUCount"]
+        )
         rv.originalSolution = OriginalSolution(d)
 
         return rv
 
     @classmethod
     def ReadOriginalInfo(cls, d):
-        return dict([(key, str(value)) for (key, value) in list(d.items()) if key != 'ProblemType'])
+        return dict(
+            [
+                (key, str(value))
+                for (key, value) in list(d.items())
+                if key != "ProblemType"
+            ]
+        )
 
     def __init__(self, **kwargs):
         self.name = None
         self.problemType = None
-        self.hardwarePredicate = Hardware.HardwarePredicate('TruePred')
-        self.problemPredicate = ProblemPredicate('TruePred')
+        self.hardwarePredicate = Hardware.HardwarePredicate("TruePred")
+        self.problemPredicate = ProblemPredicate("TruePred")
         self.sizeMapping = None
         self.debugKernel = False
         self.libraryLogicIndex = {}

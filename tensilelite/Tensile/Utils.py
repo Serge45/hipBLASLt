@@ -28,24 +28,27 @@ from .Common import ProgressBar
 import functools
 import sys
 
+
 class DataDirection(Enum):
-  NONE  = 0,
-  READ  = 1,
-  WRITE = 2
+    NONE = (0,)
+    READ = (1,)
+    WRITE = 2
+
 
 class SpinnyThing:
     def __init__(self):
-        self.chars = ['|', '/', '-', '\\']
-        self.index = 0;
+        self.chars = ["|", "/", "-", "\\"]
+        self.index = 0
 
     def increment(self, value=1):
-        sys.stdout.write('\b' + self.chars[self.index])
+        sys.stdout.write("\b" + self.chars[self.index])
         sys.stdout.flush()
         self.index = (self.index + 1) % len(self.chars)
 
     def finish(self):
-        sys.stdout.write('\b*\n')
+        sys.stdout.write("\b*\n")
         sys.stdout.flush()
+
 
 def iterate_progress(obj, *args, **kwargs):
     try:
@@ -57,16 +60,18 @@ def iterate_progress(obj, *args, **kwargs):
         progress.increment()
     progress.finish()
 
+
 try:
     from tqdm import tqdm
 except ImportError:
     tqdm = iterate_progress
 
+
 def state(obj):
-    if hasattr(obj, 'state'):
+    if hasattr(obj, "state"):
         return obj.state()
 
-    if hasattr(obj.__class__, 'StateKeys'):
+    if hasattr(obj.__class__, "StateKeys"):
         rv = {}
         for key in obj.__class__.StateKeys:
             attr = key
@@ -88,12 +93,14 @@ def state(obj):
 
     return obj
 
+
 def state_key_ordering(cls):
     def tup(obj):
         return tuple([getattr(obj, k) for k in cls.StateKeys])
 
     def lt(a, b):
         return tup(a) < tup(b)
+
     def eq(a, b):
         return tup(a) == tup(b)
 
@@ -102,10 +109,11 @@ def state_key_ordering(cls):
 
     return functools.total_ordering(cls)
 
+
 def hash_combine(*objs, **kwargs):
     shift = 1
-    if 'shift' in kwargs:
-        shift = kwargs['shift']
+    if "shift" in kwargs:
+        shift = kwargs["shift"]
 
     if len(objs) == 1:
         objs = objs[0]
@@ -121,6 +129,7 @@ def hash_combine(*objs, **kwargs):
     except StopIteration:
         pass
     return rv
+
 
 def hash_objs(*objs, **kwargs):
     return hash(tuple(objs))

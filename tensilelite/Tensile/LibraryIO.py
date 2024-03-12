@@ -42,6 +42,7 @@ try:
     from yaml import CSafeLoader as yamlLoader
 except ImportError:
     from yaml import SafeLoader as yamlLoader
+
     printWarning("CSafeLoader not installed. Fallback to SafeLoader.")
 
 try:
@@ -82,7 +83,10 @@ def writeMsgPack(filename, data):
     with open(filename, "wb") as f:
         msgpack.pack(data, f)
 
-def writeSolutions(filename, problemSizes, biasTypeArgs, activationArgs, solutions, cache=False):
+
+def writeSolutions(
+    filename, problemSizes, biasTypeArgs, activationArgs, solutions, cache=False
+):
     """Writes solution YAML file."""
 
     # convert objects to nested dictionaries
@@ -100,26 +104,37 @@ def writeSolutions(filename, problemSizes, biasTypeArgs, activationArgs, solutio
         for solution in solutions:
             solutionState = solution.getAttributes()
             solutionState["ProblemType"] = solutionState["ProblemType"].state
-            solutionState["ProblemType"]["DataType"] = \
-                    solutionState["ProblemType"]["DataType"].value
-            solutionState["ProblemType"]["DataTypeA"] = \
-                    solutionState["ProblemType"]["DataTypeA"].value
-            solutionState["ProblemType"]["DataTypeB"] = \
-                    solutionState["ProblemType"]["DataTypeB"].value
-            solutionState["ProblemType"]["DataTypeE"] = \
-                    solutionState["ProblemType"]["DataTypeE"].value
-            solutionState["ProblemType"]["DestDataType"] = \
-                    solutionState["ProblemType"]["DestDataType"].value
-            solutionState["ProblemType"]["ComputeDataType"] = \
-                    solutionState["ProblemType"]["ComputeDataType"].value
-            solutionState["ProblemType"]["BiasDataTypeList"] = \
-                    [btype.value for btype in solutionState["ProblemType"]["BiasDataTypeList"]]
-            solutionState["ProblemType"]["ActivationComputeDataType"] = \
-                    solutionState["ProblemType"]["ActivationComputeDataType"].value
-            solutionState["ProblemType"]["ActivationType"] = \
-                    solutionState["ProblemType"]["ActivationType"].value
-            solutionState["ProblemType"]["F32XdlMathOp"] = \
-                solutionState["ProblemType"]["F32XdlMathOp"].value
+            solutionState["ProblemType"]["DataType"] = solutionState["ProblemType"][
+                "DataType"
+            ].value
+            solutionState["ProblemType"]["DataTypeA"] = solutionState["ProblemType"][
+                "DataTypeA"
+            ].value
+            solutionState["ProblemType"]["DataTypeB"] = solutionState["ProblemType"][
+                "DataTypeB"
+            ].value
+            solutionState["ProblemType"]["DataTypeE"] = solutionState["ProblemType"][
+                "DataTypeE"
+            ].value
+            solutionState["ProblemType"]["DestDataType"] = solutionState["ProblemType"][
+                "DestDataType"
+            ].value
+            solutionState["ProblemType"]["ComputeDataType"] = solutionState[
+                "ProblemType"
+            ]["ComputeDataType"].value
+            solutionState["ProblemType"]["BiasDataTypeList"] = [
+                btype.value
+                for btype in solutionState["ProblemType"]["BiasDataTypeList"]
+            ]
+            solutionState["ProblemType"]["ActivationComputeDataType"] = solutionState[
+                "ProblemType"
+            ]["ActivationComputeDataType"].value
+            solutionState["ProblemType"]["ActivationType"] = solutionState[
+                "ProblemType"
+            ]["ActivationType"].value
+            solutionState["ProblemType"]["F32XdlMathOp"] = solutionState["ProblemType"][
+                "F32XdlMathOp"
+            ].value
             solutionStates.append(solutionState)
     # write dictionaries
     with open(filename, "w") as f:
@@ -129,14 +144,18 @@ def writeSolutions(filename, problemSizes, biasTypeArgs, activationArgs, solutio
             for sizeRange in problemSizes.ranges:
                 f.write("  - Range: {}\n".format(sizeRange))
             for problemExact in problemSizes.exacts:
-                #FIXME-problem, this ignores strides:
+                # FIXME-problem, this ignores strides:
                 f.write("  - Exact: {}\n".format(problemExact))
         if biasTypeArgs:
-            f.write("- BiasTypeArgs: [{}]\n".format([btype.value for btype in biasTypeArgs.biasTypes]))
+            f.write(
+                "- BiasTypeArgs: [{}]\n".format(
+                    [btype.value for btype in biasTypeArgs.biasTypes]
+                )
+            )
         if activationArgs:
             f.write("- ActivationArgs:\n")
             for setting in activationArgs.settingList:
-                f.write("  - [Enum: %s]\n"%(setting.activationEnum))
+                f.write("  - [Enum: %s]\n" % (setting.activationEnum))
         yaml.dump(solutionStates, f, default_flow_style=None)
 
 
@@ -158,22 +177,32 @@ def parseSolutionsFile(filename):
 def parseSolutionsData(data, srcFile="?"):
     """Parses problem sizes and solutions from the data of a solutions file."""
     if len(data) < 3:
-        printExit("Solution file {} is missing required fields (len = {} < 3" \
-                .format(srcFile, len(data)))
+        printExit(
+            "Solution file {} is missing required fields (len = {} < 3".format(
+                srcFile, len(data)
+            )
+        )
 
     versionString = data[0]["MinimumRequiredVersion"]
     if not versionIsCompatible(versionString):
-        printWarning("Version = {} in solution file {} does not match Tensile version = {}" \
-                .format(srcFile, versionString, __version__) )
+        printWarning(
+            "Version = {} in solution file {} does not match Tensile version = {}".format(
+                srcFile, versionString, __version__
+            )
+        )
 
     if "ProblemSizes" not in data[1]:
         printExit("Solution file {} doesn't begin with ProblemSizes".format(srcFile))
 
     problemSizesConfig = data[1]["ProblemSizes"]
     solutionStartIdxInData = 2
-    if (len(data) > solutionStartIdxInData) and "BiasTypeArgs" in data[solutionStartIdxInData]:
+    if (len(data) > solutionStartIdxInData) and "BiasTypeArgs" in data[
+        solutionStartIdxInData
+    ]:
         solutionStartIdxInData += 1
-    if (len(data) > solutionStartIdxInData) and "ActivationArgs" in data[solutionStartIdxInData]:
+    if (len(data) > solutionStartIdxInData) and "ActivationArgs" in data[
+        solutionStartIdxInData
+    ]:
         solutionStartIdxInData += 1
 
     solutions = []
@@ -191,6 +220,7 @@ def parseSolutionsData(data, srcFile="?"):
 
 class LibraryLogic(NamedTuple):
     """Return tuple for parseLibraryLogicData()"""
+
     schedule: str
     architecture: str
     problemType: ProblemType
@@ -210,11 +240,16 @@ def parseLibraryLogicData(data, srcFile="?", archs=None):
     if isinstance(data, List):
         data = parseLibraryLogicList(data, srcFile)
 
-    is_arch_valid = lambda cArch, tArch : (cArch == tArch or cArch == "all")
+    is_arch_valid = lambda cArch, tArch: (cArch == tArch or cArch == "all")
     if not (archs is None) and "ArchitectureName" in data:
         if isinstance(archs, List):
             if len(archs) > 0 and not archs[0] == "all":
-                if not (any(is_arch_valid(arch.split(":")[0], data["ArchitectureName"]) for arch in archs)):
+                if not (
+                    any(
+                        is_arch_valid(arch.split(":")[0], data["ArchitectureName"])
+                        for arch in archs
+                    )
+                ):
                     return LibraryLogic("", "", None, [], [], None, srcFile)
         elif isinstance(archs, str):
             if not is_arch_valid(archs.split(":")[0], data["ArchitectureName"]):
@@ -224,8 +259,11 @@ def parseLibraryLogicData(data, srcFile="?", archs=None):
         data["CUCount"] = None
 
     if not versionIsCompatible(data["MinimumRequiredVersion"]):
-        printWarning("Version = {} in library logic file {} does not match Tensile version = {}" \
-                .format(srcFile, data["MinimumRequiredVersion"], __version__) )
+        printWarning(
+            "Version = {} in library logic file {} does not match Tensile version = {}".format(
+                srcFile, data["MinimumRequiredVersion"], __version__
+            )
+        )
 
     # unpack problemType
     problemType = ProblemType(data["ProblemType"])
@@ -249,22 +287,38 @@ def parseLibraryLogicData(data, srcFile="?", archs=None):
                 solutionState[key] = value
         solutionObject = Solution(solutionState)
         if solutionObject["ProblemType"] != problemType:
-            printExit(f"ProblemType in library logic file {srcFile} doesn't match solution: {problemType} != {solutionObject['ProblemType']}")
+            printExit(
+                f"ProblemType in library logic file {srcFile} doesn't match solution: {problemType} != {solutionObject['ProblemType']}"
+            )
         return solutionObject
 
-    solutions = [solutionStateToSolution(solutionState) for solutionState in data["Solutions"]]
+    solutions = [
+        solutionStateToSolution(solutionState) for solutionState in data["Solutions"]
+    ]
 
-    newLibrary = SolutionLibrary.MasterSolutionLibrary.FromOriginalState(data, solutions)
+    newLibrary = SolutionLibrary.MasterSolutionLibrary.FromOriginalState(
+        data, solutions
+    )
 
-    return LibraryLogic(data["ScheduleName"], data["ArchitectureName"], problemType, solutions, \
-            data.get("ExactLogic"), newLibrary, srcFile)
+    return LibraryLogic(
+        data["ScheduleName"],
+        data["ArchitectureName"],
+        problemType,
+        solutions,
+        data.get("ExactLogic"),
+        newLibrary,
+        srcFile,
+    )
 
 
 def parseLibraryLogicList(data, srcFile="?"):
     """Parses the data of a matching table style library logic file."""
     if len(data) < 9:
-        printExit("Library logic file {} is missing required fields (len = {} < 9)" \
-                .format(srcFile, len(data)))
+        printExit(
+            "Library logic file {} is missing required fields (len = {} < 9)".format(
+                srcFile, len(data)
+            )
+        )
 
     rv = {}
     rv["MinimumRequiredVersion"] = data[0]["MinimumRequiredVersion"]
@@ -293,8 +347,11 @@ def parseLibraryLogicList(data, srcFile="?"):
     if len(data) > 11 and data[11]:
         libraryType = data[11]
     else:
-        printExit("Library logic file {} is missing required field matching property." \
-                .format(srcFile))
+        printExit(
+            "Library logic file {} is missing required field matching property.".format(
+                srcFile
+            )
+        )
     if libraryType == "FreeSize":
         rv["LibraryType"] = "FreeSize"
         rv["Library"] = {}
@@ -329,14 +386,26 @@ def rawLibraryLogic(data):
         for idx in range(9, dataLength):
             otherFields.append(data[idx])
 
-    return (versionString, scheduleName, architectureName, deviceNames,\
-            problemTypeState, solutionStates, indexOrder, exactLogic, rangeLogic, otherFields)
+    return (
+        versionString,
+        scheduleName,
+        architectureName,
+        deviceNames,
+        problemTypeState,
+        solutionStates,
+        indexOrder,
+        exactLogic,
+        rangeLogic,
+        otherFields,
+    )
 
 
 #################
 # Other functions
 #################
-def createLibraryLogic(schedulePrefix, architectureName, deviceNames, libraryType, logicTuple):
+def createLibraryLogic(
+    schedulePrefix, architectureName, deviceNames, libraryType, logicTuple
+):
     """Creates the data for a library logic file suitable for writing to YAML."""
     problemType = logicTuple[0]
     solutions = logicTuple[1]
@@ -358,52 +427,56 @@ def createLibraryLogic(schedulePrefix, architectureName, deviceNames, libraryTyp
     data.append(deviceNames)
     # problem type
     problemTypeState = problemType.state
-    problemTypeState["DataType"] = \
-            problemTypeState["DataType"].value
-    problemTypeState["DataTypeA"] = \
-            problemTypeState["DataTypeA"].value
-    problemTypeState["DataTypeB"] = \
-            problemTypeState["DataTypeB"].value
-    problemTypeState["DataTypeE"] = \
-            problemTypeState["DataTypeE"].value
-    problemTypeState["DestDataType"] = \
-            problemTypeState["DestDataType"].value
-    problemTypeState["ComputeDataType"] = \
-            problemTypeState["ComputeDataType"].value
-    problemTypeState["BiasDataTypeList"] = \
-            [btype.value for btype in problemTypeState["BiasDataTypeList"]]
-    problemTypeState["ActivationComputeDataType"] = \
-            problemTypeState["ActivationComputeDataType"].value
-    problemTypeState["ActivationType"] = \
-            problemTypeState["ActivationType"].value
-    problemTypeState["F32XdlMathOp"] = \
-            problemTypeState["F32XdlMathOp"].value
+    problemTypeState["DataType"] = problemTypeState["DataType"].value
+    problemTypeState["DataTypeA"] = problemTypeState["DataTypeA"].value
+    problemTypeState["DataTypeB"] = problemTypeState["DataTypeB"].value
+    problemTypeState["DataTypeE"] = problemTypeState["DataTypeE"].value
+    problemTypeState["DestDataType"] = problemTypeState["DestDataType"].value
+    problemTypeState["ComputeDataType"] = problemTypeState["ComputeDataType"].value
+    problemTypeState["BiasDataTypeList"] = [
+        btype.value for btype in problemTypeState["BiasDataTypeList"]
+    ]
+    problemTypeState["ActivationComputeDataType"] = problemTypeState[
+        "ActivationComputeDataType"
+    ].value
+    problemTypeState["ActivationType"] = problemTypeState["ActivationType"].value
+    problemTypeState["F32XdlMathOp"] = problemTypeState["F32XdlMathOp"].value
     data.append(problemTypeState)
     # solutions
     solutionList = []
     for solution in solutions:
         solutionState = solution.getAttributes()
         solutionState["ProblemType"] = solutionState["ProblemType"].state
-        solutionState["ProblemType"]["DataType"] = \
-                solutionState["ProblemType"]["DataType"].value
-        solutionState["ProblemType"]["DataTypeA"] = \
-                solutionState["ProblemType"]["DataTypeA"].value
-        solutionState["ProblemType"]["DataTypeB"] = \
-                solutionState["ProblemType"]["DataTypeB"].value
-        solutionState["ProblemType"]["DataTypeE"] = \
-                solutionState["ProblemType"]["DataTypeE"].value
-        solutionState["ProblemType"]["DestDataType"] = \
-                solutionState["ProblemType"]["DestDataType"].value
-        solutionState["ProblemType"]["ComputeDataType"] = \
-                solutionState["ProblemType"]["ComputeDataType"].value
-        solutionState["ProblemType"]["BiasDataTypeList"] = \
-                [btype.value for btype in solutionState["ProblemType"]["BiasDataTypeList"]]
-        solutionState["ProblemType"]["ActivationComputeDataType"] = \
-                solutionState["ProblemType"]["ActivationComputeDataType"].value
-        solutionState["ProblemType"]["ActivationType"] = \
-                solutionState["ProblemType"]["ActivationType"].value
-        solutionState["ProblemType"]["F32XdlMathOp"] = \
-                solutionState["ProblemType"]["F32XdlMathOp"].value
+        solutionState["ProblemType"]["DataType"] = solutionState["ProblemType"][
+            "DataType"
+        ].value
+        solutionState["ProblemType"]["DataTypeA"] = solutionState["ProblemType"][
+            "DataTypeA"
+        ].value
+        solutionState["ProblemType"]["DataTypeB"] = solutionState["ProblemType"][
+            "DataTypeB"
+        ].value
+        solutionState["ProblemType"]["DataTypeE"] = solutionState["ProblemType"][
+            "DataTypeE"
+        ].value
+        solutionState["ProblemType"]["DestDataType"] = solutionState["ProblemType"][
+            "DestDataType"
+        ].value
+        solutionState["ProblemType"]["ComputeDataType"] = solutionState["ProblemType"][
+            "ComputeDataType"
+        ].value
+        solutionState["ProblemType"]["BiasDataTypeList"] = [
+            btype.value for btype in solutionState["ProblemType"]["BiasDataTypeList"]
+        ]
+        solutionState["ProblemType"]["ActivationComputeDataType"] = solutionState[
+            "ProblemType"
+        ]["ActivationComputeDataType"].value
+        solutionState["ProblemType"]["ActivationType"] = solutionState["ProblemType"][
+            "ActivationType"
+        ].value
+        solutionState["ProblemType"]["F32XdlMathOp"] = solutionState["ProblemType"][
+            "F32XdlMathOp"
+        ].value
         solutionList.append(solutionState)
 
     if tileSelection:
@@ -411,26 +484,37 @@ def createLibraryLogic(schedulePrefix, architectureName, deviceNames, libraryTyp
         for solution in tileSolutions:
             solutionState = solution.getAttributes()
             solutionState["ProblemType"] = solutionState["ProblemType"].state
-            solutionState["ProblemType"]["DataType"] = \
-                    solutionState["ProblemType"]["DataType"].value
-            solutionState["ProblemType"]["DataTypeA"] = \
-                    solutionState["ProblemType"]["DataTypeA"].value
-            solutionState["ProblemType"]["DataTypeB"] = \
-                    solutionState["ProblemType"]["DataTypeB"].value
-            solutionState["ProblemType"]["DataTypeE"] = \
-                    solutionState["ProblemType"]["DataTypeE"].value
-            solutionState["ProblemType"]["DestDataType"] = \
-                    solutionState["ProblemType"]["DestDataType"].value
-            solutionState["ProblemType"]["ComputeDataType"] = \
-                    solutionState["ProblemType"]["ComputeDataType"].value
-            solutionState["ProblemType"]["BiasDataTypeList"] = \
-                    [btype.value for btype in solutionState["ProblemType"]["BiasDataTypeList"]]
-            solutionState["ProblemType"]["ActivationComputeDataType"] = \
-                    solutionState["ProblemType"]["ActivationComputeDataType"].value
-            solutionState["ProblemType"]["ActivationType"] = \
-                    solutionState["ProblemType"]["ActivationType"].value
-            solutionState["ProblemType"]["F32XdlMathOp"] = \
-                solutionState["ProblemType"]["F32XdlMathOp"].value
+            solutionState["ProblemType"]["DataType"] = solutionState["ProblemType"][
+                "DataType"
+            ].value
+            solutionState["ProblemType"]["DataTypeA"] = solutionState["ProblemType"][
+                "DataTypeA"
+            ].value
+            solutionState["ProblemType"]["DataTypeB"] = solutionState["ProblemType"][
+                "DataTypeB"
+            ].value
+            solutionState["ProblemType"]["DataTypeE"] = solutionState["ProblemType"][
+                "DataTypeE"
+            ].value
+            solutionState["ProblemType"]["DestDataType"] = solutionState["ProblemType"][
+                "DestDataType"
+            ].value
+            solutionState["ProblemType"]["ComputeDataType"] = solutionState[
+                "ProblemType"
+            ]["ComputeDataType"].value
+            solutionState["ProblemType"]["BiasDataTypeList"] = [
+                btype.value
+                for btype in solutionState["ProblemType"]["BiasDataTypeList"]
+            ]
+            solutionState["ProblemType"]["ActivationComputeDataType"] = solutionState[
+                "ProblemType"
+            ]["ActivationComputeDataType"].value
+            solutionState["ProblemType"]["ActivationType"] = solutionState[
+                "ProblemType"
+            ]["ActivationType"].value
+            solutionState["ProblemType"]["F32XdlMathOp"] = solutionState["ProblemType"][
+                "F32XdlMathOp"
+            ].value
             solutionList.append(solutionState)
 
     data.append(solutionList)
@@ -457,6 +541,6 @@ def createLibraryLogic(schedulePrefix, architectureName, deviceNames, libraryTyp
     else:
         data.append(None)
 
-    data.append(logicTuple[7]) # PerfMetric
-    data.append(libraryType) # LibraryType
+    data.append(logicTuple[7])  # PerfMetric
+    data.append(libraryType)  # LibraryType
     return data

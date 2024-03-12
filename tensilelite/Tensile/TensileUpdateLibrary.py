@@ -23,8 +23,16 @@
 ################################################################################
 
 from . import LibraryIO
-from .Common import assignGlobalParameters, print1, restoreDefaultGlobalParameters, HR, \
-                    globalParameters, architectureMap, ensurePath, ParallelMap
+from .Common import (
+    assignGlobalParameters,
+    print1,
+    restoreDefaultGlobalParameters,
+    HR,
+    globalParameters,
+    architectureMap,
+    ensurePath,
+    ParallelMap,
+)
 from .Tensile import addCommonArguments, argUpdatedGlobalParameters
 from . import __version__
 
@@ -49,8 +57,12 @@ def UpdateLogic(filename, logicPath, outputPath):
     problemTypeState["DataTypeE"] = problemTypeState["DataTypeE"].value
     problemTypeState["DestDataType"] = problemTypeState["DestDataType"].value
     problemTypeState["ComputeDataType"] = problemTypeState["ComputeDataType"].value
-    problemTypeState["BiasDataTypeList"] = [btype.value for btype in problemTypeState["BiasDataTypeList"]]
-    problemTypeState["ActivationComputeDataType"] = problemTypeState["ActivationComputeDataType"].value
+    problemTypeState["BiasDataTypeList"] = [
+        btype.value for btype in problemTypeState["BiasDataTypeList"]
+    ]
+    problemTypeState["ActivationComputeDataType"] = problemTypeState[
+        "ActivationComputeDataType"
+    ].value
     problemTypeState["ActivationType"] = problemTypeState["ActivationType"].value
     problemTypeState["F32XdlMathOp"] = problemTypeState["F32XdlMathOp"].value
 
@@ -59,32 +71,42 @@ def UpdateLogic(filename, logicPath, outputPath):
     for solution in solutions:
         solutionState = solution.getAttributes()
         solutionState["ProblemType"] = solutionState["ProblemType"].state
-        solutionState["ProblemType"]["DataType"] = \
-                solutionState["ProblemType"]["DataType"].value
-        solutionState["ProblemType"]["DataTypeA"] = \
-                solutionState["ProblemType"]["DataTypeA"].value
-        solutionState["ProblemType"]["DataTypeB"] = \
-                solutionState["ProblemType"]["DataTypeB"].value
-        solutionState["ProblemType"]["DataTypeE"] = \
-                solutionState["ProblemType"]["DataTypeE"].value
-        solutionState["ProblemType"]["DestDataType"] = \
-                solutionState["ProblemType"]["DestDataType"].value
-        solutionState["ProblemType"]["ComputeDataType"] = \
-                solutionState["ProblemType"]["ComputeDataType"].value
-        solutionState["ProblemType"]["BiasDataTypeList"] = \
-                [btype.value for btype in solutionState["ProblemType"]["BiasDataTypeList"]]
-        solutionState["ProblemType"]["ActivationComputeDataType"] = \
-                solutionState["ProblemType"]["ActivationComputeDataType"].value
-        solutionState["ProblemType"]["ActivationType"] = \
-                solutionState["ProblemType"]["ActivationType"].value
-        solutionState["ProblemType"]["F32XdlMathOp"] = \
-            solutionState["ProblemType"]["F32XdlMathOp"].value
+        solutionState["ProblemType"]["DataType"] = solutionState["ProblemType"][
+            "DataType"
+        ].value
+        solutionState["ProblemType"]["DataTypeA"] = solutionState["ProblemType"][
+            "DataTypeA"
+        ].value
+        solutionState["ProblemType"]["DataTypeB"] = solutionState["ProblemType"][
+            "DataTypeB"
+        ].value
+        solutionState["ProblemType"]["DataTypeE"] = solutionState["ProblemType"][
+            "DataTypeE"
+        ].value
+        solutionState["ProblemType"]["DestDataType"] = solutionState["ProblemType"][
+            "DestDataType"
+        ].value
+        solutionState["ProblemType"]["ComputeDataType"] = solutionState["ProblemType"][
+            "ComputeDataType"
+        ].value
+        solutionState["ProblemType"]["BiasDataTypeList"] = [
+            btype.value for btype in solutionState["ProblemType"]["BiasDataTypeList"]
+        ]
+        solutionState["ProblemType"]["ActivationComputeDataType"] = solutionState[
+            "ProblemType"
+        ]["ActivationComputeDataType"].value
+        solutionState["ProblemType"]["ActivationType"] = solutionState["ProblemType"][
+            "ActivationType"
+        ].value
+        solutionState["ProblemType"]["F32XdlMathOp"] = solutionState["ProblemType"][
+            "F32XdlMathOp"
+        ].value
 
         solutionState["ISA"] = list(solutionState["ISA"])
         solutionList.append(solutionState)
 
     # update yaml
-    libYaml[0] = {"MinimumRequiredVersion":__version__}
+    libYaml[0] = {"MinimumRequiredVersion": __version__}
     libYaml[4] = problemTypeState
     libYaml[5] = solutionList
 
@@ -92,6 +114,7 @@ def UpdateLogic(filename, logicPath, outputPath):
         filename = filename.replace(logicPath, outputPath)
     ensurePath(os.path.dirname(filename))
     LibraryIO.writeYAML(filename, libYaml, explicit_start=False, explicit_end=False)
+
 
 def TensileUpdateLibrary(userArgs):
     print1("")
@@ -101,8 +124,15 @@ def TensileUpdateLibrary(userArgs):
 
     # argument parsing and related setup
     argParser = argparse.ArgumentParser()
-    argParser.add_argument("--logic_path",  type=os.path.realpath, help="Path to LibraryLogic.yaml files.")
-    argParser.add_argument("--output_path", type=os.path.realpath, default=None, help="Where to place updated logic file.")
+    argParser.add_argument(
+        "--logic_path", type=os.path.realpath, help="Path to LibraryLogic.yaml files."
+    )
+    argParser.add_argument(
+        "--output_path",
+        type=os.path.realpath,
+        default=None,
+        help="Where to place updated logic file.",
+    )
 
     addCommonArguments(argParser)
     args = argParser.parse_args(userArgs)
@@ -127,10 +157,15 @@ def TensileUpdateLibrary(userArgs):
         logicArchs.add(name)
     logicFiles = []
     for root, dirs, files in os.walk(args.logic_path):
-        logicFiles += [os.path.join(root, f) for f in files
-                        if os.path.splitext(f)[1]==".yaml" \
-                        and (any(logicArch in os.path.splitext(f)[0] for logicArch in logicArchs) \
-                        or "hip" in os.path.splitext(f)[0]) ]
+        logicFiles += [
+            os.path.join(root, f)
+            for f in files
+            if os.path.splitext(f)[1] == ".yaml"
+            and (
+                any(logicArch in os.path.splitext(f)[0] for logicArch in logicArchs)
+                or "hip" in os.path.splitext(f)[0]
+            )
+        ]
 
     # update logic file
     outputPath = ""
@@ -140,8 +175,12 @@ def TensileUpdateLibrary(userArgs):
     print("# LibraryLogicFiles:" % logicFiles)
     for logicFile in logicFiles:
         print("#   %s" % logicFile)
-    fIter = zip(logicFiles, itertools.repeat(args.logic_path), itertools.repeat(outputPath))
-    libraries = ParallelMap(UpdateLogic, fIter, "Updating logic files", method=lambda x: x.starmap)
+    fIter = zip(
+        logicFiles, itertools.repeat(args.logic_path), itertools.repeat(outputPath)
+    )
+    libraries = ParallelMap(
+        UpdateLogic, fIter, "Updating logic files", method=lambda x: x.starmap
+    )
 
 
 def main():

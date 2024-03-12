@@ -25,6 +25,7 @@
 from ..TensileInstructions import DataType, Module
 from ..Component import Component, MAC
 
+
 class MAC_I8X4_Plain(MAC):
     asmCaps = {"VOP3v_dot4_i32_i8": True}
     kernel = {"ProblemType": {"DataType": DataType(DataType.int8x4)}}
@@ -44,13 +45,24 @@ class MAC_I8X4_Plain(MAC):
             for a in range(0, kernel["ThreadTile0"]):
                 vars["a"] = a
                 for iui in range(0, innerUnroll):
-                    vars["iui"]  = iui
-                    cidx         = a + b*kernel["ThreadTile0"] + 0
-                    cStr         = "v[vgprValuC+{a}+{b}*{ThreadTile0}]".format_map(vars)
-                    aStr         = "v[vgprValuA_X{m}_I{iui}+{a}]".format_map(vars)
-                    bStr         = "v[vgprValuB_X{m}_I{iui}+{b}]".format_map(vars)
-                    module.addInst("v_dot4_i32_i8", cStr, aStr, bStr, cStr, "op_sel:[0,0]", "op_sel_hi:[1,1]", "valuC[%u]" % cidx)
-                    module.add(priority(writer, 1, "Raise priority while processing macs"))
+                    vars["iui"] = iui
+                    cidx = a + b * kernel["ThreadTile0"] + 0
+                    cStr = "v[vgprValuC+{a}+{b}*{ThreadTile0}]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}]".format_map(vars)
+                    module.addInst(
+                        "v_dot4_i32_i8",
+                        cStr,
+                        aStr,
+                        bStr,
+                        cStr,
+                        "op_sel:[0,0]",
+                        "op_sel_hi:[1,1]",
+                        "valuC[%u]" % cidx,
+                    )
+                    module.add(
+                        priority(writer, 1, "Raise priority while processing macs")
+                    )
 
         module.add(priority(writer, 0, "Reset priority after macs"))
         return module

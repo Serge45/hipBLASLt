@@ -28,8 +28,17 @@ from . import ClientWriter
 from . import LibraryIO
 from . import LibraryLogic
 from . import Common
-from .Common import globalParameters, print1, printWarning, ensurePath, assignGlobalParameters, \
-                    pushWorkingPath, popWorkingPath, restoreDefaultGlobalParameters, HR
+from .Common import (
+    globalParameters,
+    print1,
+    printWarning,
+    ensurePath,
+    assignGlobalParameters,
+    pushWorkingPath,
+    popWorkingPath,
+    restoreDefaultGlobalParameters,
+    HR,
+)
 from .Tensile import addCommonArguments, argUpdatedGlobalParameters
 from .SolutionStructs import ProblemSizes
 from . import __version__
@@ -54,13 +63,17 @@ def parseCurrentLibrary(libPath, sizePath):
     # process exactLogic into ProblemSizes
     sizes = []
     if sizePath is None:
-        for (size, mapping) in exactLogic:
+        for size, mapping in exactLogic:
             sizes.append({"Exact": size})
     else:
         sizes = LibraryIO.readYAML(sizePath)
 
     # remove duplicate solutions and reindex
-    solutions = [v1 for i, v1 in enumerate(solutions) if not any(v1 == v2 for v2 in solutions[:i])]
+    solutions = [
+        v1
+        for i, v1 in enumerate(solutions)
+        if not any(v1 == v2 for v2 in solutions[:i])
+    ]
     for i, s in enumerate(solutions):
         s["SolutionIndex"] = i
 
@@ -84,32 +97,44 @@ def runBenchmarking(solutions, problemSizes, outPath, update):
     ensurePath(resultsDir)
 
     if update:
-        Common.globalParameters["LibraryUpdateFile"] = os.path.join(resultsDir, "update.yaml")
+        Common.globalParameters["LibraryUpdateFile"] = os.path.join(
+            resultsDir, "update.yaml"
+        )
 
     pushWorkingPath(shortName)
     pushWorkingPath("source")
-    BenchmarkProblems.writeBenchmarkFiles(benchmarkDir, solutions, problemSizes , "", "", shortName, [])
-    popWorkingPath() # source
+    BenchmarkProblems.writeBenchmarkFiles(
+        benchmarkDir, solutions, problemSizes, "", "", shortName, []
+    )
+    popWorkingPath()  # source
 
     libraryLogicPath = None
     forBenchmark = True
     # TODO make this work with TileAware selection
     returncode = ClientWriter.runClient(libraryLogicPath, forBenchmark, False)
     if returncode:
-        printWarning("Benchmarking Client exited with code {}. Trying to continue".format(returncode))
+        printWarning(
+            "Benchmarking Client exited with code {}. Trying to continue".format(
+                returncode
+            )
+        )
 
     # write solutions yaml file
     for sol in solutions:
         sol["ISA"] = list(sol["ISA"])
     LibraryIO.writeSolutions(libraryFile, problemSizes, "", solutions)
 
-    popWorkingPath() # benchmark
+    popWorkingPath()  # benchmark
 
     # copy results to expected directory
     out = os.path.join(globalParameters["WorkingPath"], "2_BenchmarkData")
     ensurePath(out)
-    shutil.copy(os.path.join(resultsDir, "benchmark.csv"), os.path.join(out, "benchmark.csv"))
-    shutil.copy(os.path.join(resultsDir, "benchmark.yaml"), os.path.join(out, "benchmark.yaml"))
+    shutil.copy(
+        os.path.join(resultsDir, "benchmark.csv"), os.path.join(out, "benchmark.csv")
+    )
+    shutil.copy(
+        os.path.join(resultsDir, "benchmark.yaml"), os.path.join(out, "benchmark.yaml")
+    )
 
 
 def TensileRetuneLibrary(userArgs):
@@ -120,18 +145,31 @@ def TensileRetuneLibrary(userArgs):
 
     # argument parsing and related setup
     argParser = argparse.ArgumentParser()
-    argParser.add_argument("LogicFile", type=os.path.realpath,
-                           help="Library logic file to retune")
-    argParser.add_argument("OutputPath", type=os.path.realpath,
-                           help="Where to run benchmarks and output results")
-    argParser.add_argument("SizeFile", type=os.path.realpath, nargs="?",
-                           help="Yaml file with sizes to tune; same format as the 'ProblemSizes' "
-                           "section of a regular Tensile config "
-                           "(https://github.com/ROCmSoftwarePlatform/Tensile/wiki/Benchmark-Protocol)",
-                           default=None)
-    argParser.add_argument("--update-method", "-u", dest="updateMethod",
-                           choices=["remake", "update", "both"], default="remake",
-                           help="Method for making new library logic file")
+    argParser.add_argument(
+        "LogicFile", type=os.path.realpath, help="Library logic file to retune"
+    )
+    argParser.add_argument(
+        "OutputPath",
+        type=os.path.realpath,
+        help="Where to run benchmarks and output results",
+    )
+    argParser.add_argument(
+        "SizeFile",
+        type=os.path.realpath,
+        nargs="?",
+        help="Yaml file with sizes to tune; same format as the 'ProblemSizes' "
+        "section of a regular Tensile config "
+        "(https://github.com/ROCmSoftwarePlatform/Tensile/wiki/Benchmark-Protocol)",
+        default=None,
+    )
+    argParser.add_argument(
+        "--update-method",
+        "-u",
+        dest="updateMethod",
+        choices=["remake", "update", "both"],
+        default="remake",
+        help="Method for making new library logic file",
+    )
 
     addCommonArguments(argParser)
     args = argParser.parse_args(userArgs)
@@ -149,7 +187,7 @@ def TensileRetuneLibrary(userArgs):
     elif args.updateMethod == "update":
         update = True
         remake = False
-    else: # args.updateMethod == "both"
+    else:  # args.updateMethod == "both"
         update = True
         remake = True
 
@@ -158,9 +196,9 @@ def TensileRetuneLibrary(userArgs):
     ##############################################
     outPath = ensurePath(os.path.abspath(args.OutputPath))
     restoreDefaultGlobalParameters()
-    assignGlobalParameters({"LibraryFormat": "msgpack",
-                            "OutputPath": outPath,
-                            "WorkingPath": outPath})
+    assignGlobalParameters(
+        {"LibraryFormat": "msgpack", "OutputPath": outPath, "WorkingPath": outPath}
+    )
 
     overrideParameters = argUpdatedGlobalParameters(args)
     for key, value in overrideParameters.items():
@@ -173,9 +211,13 @@ def TensileRetuneLibrary(userArgs):
 
     if remake:
         # write library logic file
-        LibraryLogic.main({"ScheduleName": rawYaml[1],
-                           "ArchitectureName": rawYaml[2],
-                           "DeviceNames": rawYaml[3] })
+        LibraryLogic.main(
+            {
+                "ScheduleName": rawYaml[1],
+                "ArchitectureName": rawYaml[2],
+                "DeviceNames": rawYaml[3],
+            }
+        )
 
     if update:
         # read update yaml from benchmark client and update logic
