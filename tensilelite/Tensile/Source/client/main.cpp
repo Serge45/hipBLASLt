@@ -48,6 +48,7 @@
 #include "PerformanceReporter.hpp"
 #include "ResultFileReporter.hpp"
 #include "ResultReporter.hpp"
+#include "WarmupRunner.hpp"
 
 #include "Utility.hpp"
 

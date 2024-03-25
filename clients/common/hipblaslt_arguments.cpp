@@ -93,8 +93,9 @@ void Arguments::init()
 
     batch_count = 1;
 
-    iters      = 10;
-    cold_iters = 2;
+    iters             = 10;
+    cold_iters        = 2;
+    cold_iter_time_ms = 0;
 
     algo                   = 0;
     solution_index         = -1;

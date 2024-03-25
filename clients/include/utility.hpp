@@ -29,8 +29,10 @@
 #include "hipblaslt_vector.hpp"
 #include <cstdio>
 #include <hipblaslt/hipblaslt.h>
+#include <functional>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -470,6 +472,16 @@ void print_strided_batched(
     }
     hipblaslt_cout << std::flush;
 }
+
+struct warmup_runner {
+    using kernel_invoke_callback = std::function<void(void)>;
+    using kernel_invoke_func = std::function<void(std::size_t)>;
+    virtual void run(kernel_invoke_func, hipStream_t = nullptr, kernel_invoke_callback first_invoke_callback = [](){}, kernel_invoke_callback prewarmup_ballback = [](){}, kernel_invoke_callback postwarmup_callback = [](){}) const = 0;
+    virtual ~warmup_runner() = default;
+};
+
+std::unique_ptr<warmup_runner> make_counter_based_warmup_runner(std::size_t num_iters);
+std::unique_ptr<warmup_runner> make_time_based_warmup_runner(std::size_t num_iter_time_ms);
 
 std::vector<void*> benchmark_allocation();
 int32_t hipblaslt_get_arch_major();

@@ -43,6 +43,7 @@
 #include <hipblaslt/hipblaslt-ext.hpp>
 #include <hipblaslt/hipblaslt.h>
 #include <map>
+#include <memory>
 #include <omp.h>
 #include <set>
 
@@ -2357,6 +2358,8 @@ void testing_matmul_with_bias(const Arguments& arg)
             flush_time_used /= flush_iter;
         }
 
+        std::unique_ptr<warmup_runner> warmup_runner = arg.cold_iter_time_ms ? make_time_based_warmup_runner(arg.cold_iter_time_ms) : make_counter_based_warmup_runner(number_cold_calls);
+
         for(size_t sol = 0; sol < heuristicResult.size(); sol++)
         {
             if(!do_grouped_gemm)
@@ -2368,12 +2371,15 @@ void testing_matmul_with_bias(const Arguments& arg)
                             gemmVec[b].initialize(heuristicResult[sol].algo,
                                                   tuningVec[heuristicTuningIndex[sol]],
                                                   *dWorkspace));
-                    for(int i = 0; i < number_cold_calls; i++)
-                    {
+                    warmup_runner->run([&gemmVec, block_count, stream](std::size_t i){
                         CHECK_HIPBLASLT_ERROR(gemmVec[i % block_count].run(stream));
-                        if(i == 0 && (arg.unit_check || arg.norm_check))
-                            copy_gemm_to_host(stream, gemm_count, hD_1, dD);
+                    }, 
+                    stream,
+                    [&arg, &stream, gemm_count, &hD_1, &dD](){
+                    if (arg.unit_check || arg.norm_check) {
+                        copy_gemm_to_host(stream, gemm_count, hD_1, dD);
                     }
+                });
                     if(arg.use_gpu_timer)
                         CHECK_HIP_ERROR(hipEventRecord(event_gpu_time_start, stream));
                     else
@@ -2391,8 +2397,7 @@ void testing_matmul_with_bias(const Arguments& arg)
                 }
                 else
                 {
-                    for(int i = 0; i < number_cold_calls; i++)
-                    {
+                    warmup_runner->run([&](std::size_t i){
                         TiA* ptr_dA     = *(dA[0]) + (i % block_count) * size_A[0];
                         TiB* ptr_dB     = *(dB[0]) + (i % block_count) * size_B[0];
                         To*  ptr_dC     = *(dC[0]) + (i % block_count) * size_C[0];
@@ -2419,9 +2424,14 @@ void testing_matmul_with_bias(const Arguments& arg)
                                                               workspace_size,
                                                               stream),
                                               HIPBLAS_STATUS_SUCCESS);
-                        if(i == 0 && (arg.unit_check || arg.norm_check))
+
+                    },
+                    stream,
+                    [&](){
+                        if(arg.unit_check || arg.norm_check) {
                             copy_gemm_to_host(stream, gemm_count, hD_1, dD);
-                    }
+                        }
+                    });
 
                     if(arg.use_gpu_timer)
                         CHECK_HIP_ERROR(hipEventRecord(event_gpu_time_start, stream));
@@ -2499,13 +2509,15 @@ void testing_matmul_with_bias(const Arguments& arg)
                                                   hipMemcpyHostToDevice));
                     }
 
-                    for(int i = 0; i < number_cold_calls; i++)
-                    {
+                    warmup_runner->run([&](std::size_t i){
                         CHECK_HIPBLASLT_ERROR(groupedGemmVec[i % block_count].run(
                             d_userArgsVec[i % block_count], stream));
-                        if(i == 0 && (arg.unit_check || arg.norm_check))
-                            copy_gemm_to_host(stream, gemm_count, hD_1, dD);
-                    }
+                    },
+                    stream,
+                    [&](){
+                        copy_gemm_to_host(stream, gemm_count, hD_1, dD);
+                    });
+
                     if(arg.use_gpu_timer)
                         CHECK_HIP_ERROR(hipEventRecord(event_gpu_time_start, stream));
                     else
@@ -2544,12 +2556,14 @@ void testing_matmul_with_bias(const Arguments& arg)
                             false,
                             stream));
 
-                    for(int i = 0; i < number_cold_calls; i++)
-                    {
+                    warmup_runner->run([&](std::size_t i){
                         CHECK_HIPBLASLT_ERROR(groupedGemmVec[i % block_count].run(stream));
-                        if(i == 0 && (arg.unit_check || arg.norm_check))
-                            copy_gemm_to_host(stream, gemm_count, hD_1, dD);
-                    }
+                    },
+                    stream,
+                    [&](){
+                        copy_gemm_to_host(stream, gemm_count, hD_1, dD);
+                    });
+
                     if(arg.use_gpu_timer)
                         CHECK_HIP_ERROR(hipEventRecord(event_gpu_time_start, stream));
                     else

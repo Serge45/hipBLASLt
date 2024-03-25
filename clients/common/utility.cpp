@@ -34,6 +34,7 @@
 
 #include <fcntl.h>
 
+#include <hip/hip_runtime.h>
 #include "Tensile/Source/client/include/Utility.hpp"
 
 #if __has_include(<filesystem>)
@@ -281,4 +282,102 @@ int32_t hipblaslt_get_arch_major()
     static_cast<void>(hipGetDeviceProperties(&deviceProperties, deviceId));
     auto        gpu_arch_no_prefix = removePrefix(deviceProperties.gcnArchName);
     return stoi(gpu_arch_no_prefix) /100;
+}
+
+struct counter_based_warmup_runner : public warmup_runner {
+    explicit counter_based_warmup_runner(std::size_t num_iters)
+    : num_iters(num_iters) {}
+    void run(kernel_invoke_func func, hipStream_t, kernel_invoke_callback first_invoke_callback = [](){}, kernel_invoke_callback prewarmup_ballback = [](){}, kernel_invoke_callback postwarmup_callback = [](){}) const override {
+        hipblaslt_cout << "Entering warmup loop" << std::endl;
+        prewarmup_ballback();
+
+        if (num_iters) {
+            func(0);
+            first_invoke_callback();
+        }
+
+        for (std::size_t i = 1; i < num_iters; ++i) {
+            func(i);
+        }
+
+        postwarmup_callback();
+
+    }
+
+private:
+    std::size_t num_iters{};
+};
+
+class scoped_hip_event_t final {
+public:
+    scoped_hip_event_t() {
+        hipEventCreate(&event);
+    }
+
+    ~scoped_hip_event_t() {
+        if (event) {
+            hipEventDestroy(event);
+        }
+    }
+    
+    scoped_hip_event_t(const scoped_hip_event_t &) = delete;
+    scoped_hip_event_t &operator=(const scoped_hip_event_t &) = delete;
+    scoped_hip_event_t(scoped_hip_event_t &&) = delete;
+    scoped_hip_event_t &operator=(scoped_hip_event_t &&) = delete;
+
+    operator hipEvent_t() const {
+        return event;
+    }
+private:
+    hipEvent_t event{};
+};
+
+struct time_based_warmup_runner : public warmup_runner {
+    explicit time_based_warmup_runner(std::size_t num_iter_time_ms)
+    : num_iter_time_ms(num_iter_time_ms) {}
+    void run(kernel_invoke_func func, hipStream_t stream, kernel_invoke_callback first_invoke_callback = [](){}, kernel_invoke_callback prewarmup_ballback = [](){}, kernel_invoke_callback postwarmup_callback = [](){}) const override {
+        prewarmup_ballback();
+        scoped_hip_event_t start;
+        scoped_hip_event_t stop{};
+        hipEventRecord(start, stream);
+        std::size_t num_runs{};
+
+        if (num_iter_time_ms) {
+            func(num_runs);
+            hipEventRecord(stop, stream);
+            first_invoke_callback();
+            ++num_runs;
+        }
+
+        float dur{};
+
+        while (dur < num_iter_time_ms) {
+            constexpr std::size_t throttle{5};
+            hipEventSynchronize(stop);
+            hipEventElapsedTime(&dur, start, stop);
+
+            for (std::size_t i = 0; i < throttle; ++i, ++num_runs) {
+                func(num_runs);
+            }
+
+            hipEventRecord(stop, stream);
+        }
+
+        hipEventSynchronize(stop);
+        hipEventElapsedTime(&dur, start, stop);
+        hipblaslt_cout << "Warmup time ms: " << dur << " ms" << std::endl;
+
+        postwarmup_callback();
+    }
+
+private:
+    std::size_t num_iter_time_ms{};
+};
+
+std::unique_ptr<warmup_runner> make_counter_based_warmup_runner(std::size_t num_iters) {
+    return std::make_unique<counter_based_warmup_runner>(num_iters);
+}
+
+std::unique_ptr<warmup_runner> make_time_based_warmup_runner(std::size_t num_iter_time_ms) {
+    return std::make_unique<time_based_warmup_runner>(num_iter_time_ms);
 }

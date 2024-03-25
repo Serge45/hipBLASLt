@@ -423,6 +423,10 @@ try
          value<int32_t>(&arg.cold_iters)->default_value(2),
          "Cold Iterations to run before entering the timing loop")
 
+        ("cold_iter_time_ms",
+         value<int32_t>(&arg.cold_iter_time_ms)->default_value(2),
+         "Cold iteration time in milli-second to run before entering the timing loop")
+
         ("algo_method",
          value<std::string>(&algo_method_str)->default_value("heuristic"),
          "Use different algorithm search API. Options: heuristic, all, index.")
