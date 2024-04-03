@@ -308,15 +308,21 @@ private:
     std::size_t num_iters{};
 };
 
+void check_hip_error_exit(hipError_t err) {
+    if (err != hipSuccess) {
+        exit(EXIT_FAILURE);
+    }
+}
+
 class scoped_hip_event_t final {
 public:
     scoped_hip_event_t() {
-        hipEventCreate(&event);
+        check_hip_error_exit(hipEventCreate(&event));
     }
 
     ~scoped_hip_event_t() {
         if (event) {
-            hipEventDestroy(event);
+            check_hip_error_exit(hipEventDestroy(event));
         }
     }
     
@@ -339,12 +345,12 @@ struct time_based_warmup_runner : public warmup_runner {
         prewarmup_ballback();
         scoped_hip_event_t start;
         scoped_hip_event_t stop{};
-        hipEventRecord(start, stream);
+        check_hip_error_exit(hipEventRecord(start, stream));
         std::size_t num_runs{};
 
         if (num_iter_time_ms) {
             func(num_runs);
-            hipEventRecord(stop, stream);
+            check_hip_error_exit(hipEventRecord(stop, stream));
             first_invoke_callback();
             ++num_runs;
         }
@@ -353,20 +359,19 @@ struct time_based_warmup_runner : public warmup_runner {
 
         while (dur < num_iter_time_ms) {
             constexpr std::size_t throttle{5};
-            hipEventSynchronize(stop);
-            hipEventElapsedTime(&dur, start, stop);
+            check_hip_error_exit(hipEventSynchronize(stop));
+            check_hip_error_exit(hipEventElapsedTime(&dur, start, stop));
 
             for (std::size_t i = 0; i < throttle; ++i, ++num_runs) {
                 func(num_runs);
             }
 
-            hipEventRecord(stop, stream);
+            check_hip_error_exit(hipEventRecord(stop, stream));
         }
 
-        hipEventSynchronize(stop);
-        hipEventElapsedTime(&dur, start, stop);
+        check_hip_error_exit(hipEventSynchronize(stop));
+        check_hip_error_exit(hipEventElapsedTime(&dur, start, stop));
         hipblaslt_cout << "Warmup time ms: " << dur << " ms" << std::endl;
-
         postwarmup_callback();
     }
 
