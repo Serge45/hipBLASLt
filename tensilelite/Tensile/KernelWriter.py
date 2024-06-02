@@ -48,7 +48,7 @@ import subprocess
 import sys
 import collections
 from dataclasses import dataclass, field
-from typing import Dict, NamedTuple, Tuple, Type
+from typing import Dict, NamedTuple, Tuple, Type, Any
 from math import ceil
 
 # Make const values immutable
@@ -526,6 +526,16 @@ class KernelWriter(metaclass=abc.ABCMeta):
     siaComponent.schedIntoIteration(self, kernel, tensorParametersA, tensorParametersB, \
       localWriteEndIter, firstIter, lastLoop, lastLc, maxVmcnt, globalReadIncACode, \
       globalReadIncBCode)
+
+  def updateDoParameters(self, doParameterList: List[Tuple[Any, Any]]) -> List[str]:
+    updatedKeys = []
+
+    for k, v in doParameterList:
+      if k in self.do:
+        self.do[k] = v
+        updatedKeys.append(k)
+
+    return updatedKeys
 
   ##############################################################################
   # Schedule work into the each unroll loop iteration

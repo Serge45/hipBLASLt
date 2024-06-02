@@ -53,7 +53,7 @@ def executeStepsInConfig(config):
     # Benchmark Problems
     ##############################################################################
     if "BenchmarkProblems" in config:
-        BenchmarkProblems.main(config["BenchmarkProblems"], config["UseCache"])
+        BenchmarkProblems.main(config["BenchmarkProblems"], config["UseCache"], config["DoParameterList"])
         print1("")
 
     ##############################################################################
@@ -89,7 +89,7 @@ def executeStepsInConfig(config):
         print1("")
 
 
-def addCommonArguments(argParser):
+def addCommonArguments(argParser: argparse.ArgumentParser):
     """
     Add a common set of arguments to `argParser`.
 
@@ -129,9 +129,8 @@ def addCommonArguments(argParser):
     argParser.add_argument("--client-build-path", default=None)
     argParser.add_argument("--client-lock", default=None)
     argParser.add_argument("--prebuilt-client", default=None)
-
     argParser.add_argument("--global-parameters", nargs="+", type=splitExtraParameters, default=[])
-
+    argParser.add_argument("--do-parameters", nargs="+", dest="doParameterList", type=splitExtraParameters, default=[])
 
 def argUpdatedGlobalParameters(args):
     """
@@ -270,6 +269,7 @@ def Tensile(userArgs):
 
     config["UseCache"] = useCache
     globalParameters["ConfigPath"] = configPaths
+    config["DoParameterList"] = args.doParameterList
 
     # assign global parameters
     if "GlobalParameters" in config:

@@ -106,7 +106,7 @@ def generateCustomKernelSolutions(problemType, customKernels, internalSupportPar
     return solutions
 
 def writeBenchmarkFiles(stepBaseDir, solutions, problemSizes, \
-        biasTypeArgs, biasDimArgs, activationArgs, icacheFlushArgs, stepName, solutionSummationSizes):
+        biasTypeArgs, biasDimArgs, activationArgs, icacheFlushArgs, stepName, solutionSummationSizes, doParameterList=None):
     """Write all the files needed for a given benchmarking step"""
     if not globalParameters["MergeFiles"]:
         ensurePath(os.path.join(globalParameters["WorkingPath"], "Solutions"))
@@ -138,6 +138,9 @@ def writeBenchmarkFiles(stepBaseDir, solutions, problemSizes, \
     kernelSerialNaming = Solution.getSerialNaming(kernels)
     kernelMinNaming = Solution.getMinNaming(kernels)
     kernelWriterAssembly = KernelWriterAssembly(kernelMinNaming, kernelSerialNaming)
+
+    if doParameterList:
+        kernelWriterAssembly.updateDoParameters(doParameterList)
 
     # write solution, kernels and CMake
     problemType = solutions[0]["ProblemType"]
@@ -190,7 +193,7 @@ def writeBenchmarkFiles(stepBaseDir, solutions, problemSizes, \
     return codeObjectFiles
 
 
-def benchmarkProblemType(problemTypeConfig, problemSizeGroupConfig, problemSizeGroupIdx, useCache):
+def benchmarkProblemType(problemTypeConfig, problemSizeGroupConfig, problemSizeGroupIdx, useCache, doParameterList):
     """Run the benchmarking for a single entry in the BenchmarkProblems of a Tensile config"""
     benchmarkTestFails = 0
 
@@ -303,7 +306,7 @@ def benchmarkProblemType(problemTypeConfig, problemSizeGroupConfig, problemSizeG
             prevCount = len(solutions)
             codeObjectFiles = writeBenchmarkFiles(stepBaseDir, solutions, \
                     benchmarkStep.problemSizes, benchmarkStep.biasTypeArgs, \
-                    benchmarkStep.biasDimArgs, benchmarkStep.activationArgs, benchmarkStep.icacheFlushArgs, shortName, [])
+                    benchmarkStep.biasDimArgs, benchmarkStep.activationArgs, benchmarkStep.icacheFlushArgs, shortName, [], doParameterList)
             # ^ this mutates solutions
 
             # write cache data
@@ -371,7 +374,7 @@ def benchmarkProblemType(problemTypeConfig, problemSizeGroupConfig, problemSizeG
     return (resultsFileBaseFinal, benchmarkTestFails)
 
 
-def main(config, useCache):
+def main(config, useCache, doParameterList):
     """Entry point for the "BenchmarkProblems" section of a Tensile config yaml"""
     ClientExecutable.getClientExecutable()
 
@@ -408,7 +411,7 @@ def main(config, useCache):
 
                 # benchmark problem size group
                 (resultsFileBaseFinal, benchmarkErrors) = \
-                        benchmarkProblemType(problemTypeConfig, sizeGroupConfig, idx, useCache)
+                        benchmarkProblemType(problemTypeConfig, sizeGroupConfig, idx, useCache, doParameterList)
                 totalTestFails += benchmarkErrors
 
                 print("clientExit={} {} for {}" \
