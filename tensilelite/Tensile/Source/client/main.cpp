@@ -57,6 +57,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <fstream>
 
 namespace po = boost::program_options;
 
@@ -151,6 +152,40 @@ namespace Tensile
                            .count();
             }
             return time / flushIter;
+        }
+
+        constexpr char default_cached_icache_kernel_time_path[] = "icache_kernel_time";
+
+        bool save_cached_icache_kernel_time(const std::string &path, float timeMs)
+        {
+            std::ofstream ofs(path);
+            
+            if (!ofs.is_open()) {
+                return false;
+            }
+
+            ofs << timeMs;
+            return true;
+        }
+
+        bool load_cached_icache_kernel_time(const std::string &path, float *timeMs)
+        {
+            std::ifstream ifs(path);
+            
+            if (!ifs.is_open()) {
+                return false;
+            }
+
+            float loadedTimeMs{};
+            ifs >> loadedTimeMs;
+
+            //hard-coded range check.
+            if (loadedTimeMs > 0.f && loadedTimeMs < 100.f) {
+                *timeMs = loadedTimeMs;
+                return true;
+            }
+
+            return false;
         }
 
         template <typename T>
@@ -648,7 +683,12 @@ int main(int argc, const char* argv[])
     {
         bool hasIcacheFlush
             = std::any_of(begin(icacheFlushArgs), end(icacheFlushArgs), [](auto i) { return i; });
-        flushTimeMs = hasIcacheFlush ? estimate_flush_kernel_time(stream, gpuTimer) : 0.f;
+        
+        if(hasIcacheFlush && !load_cached_icache_kernel_time(default_cached_icache_kernel_time_path, &flushTimeMs))
+        {
+            flushTimeMs = estimate_flush_kernel_time(stream, gpuTimer);
+            save_cached_icache_kernel_time(default_cached_icache_kernel_time_path, flushTimeMs);
+        }
         listeners.addListener(std::make_shared<ReferenceValidator>(args, dataInit));
         benchmarkTimer = std::make_shared<BenchmarkTimer>(args, *hardware, flushTimeMs * 1000);
         listeners.addListener(benchmarkTimer);
