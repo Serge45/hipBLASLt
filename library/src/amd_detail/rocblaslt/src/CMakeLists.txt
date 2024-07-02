@@ -121,3 +121,7 @@ set(rocblaslt_source
   src/amd_detail/rocblaslt/src/rocblaslt_transform.cpp
   ${Tensile_SRC}
 )
+
+#set supported offload arch for source kernel
+set(SourceKernelCXXFlags "--offload-arch=gfx900,gfx906,gfx908,gfx90a,gfx940,gfx941,gfx942,gfx1100,gfx1101,gfx1102")
+set_source_files_properties(src/amd_detail/rocblaslt/src/rocblaslt_transform.cpp PROPERTIES COMPILE_FLAGS ${SourceKernelCXXFlags})
