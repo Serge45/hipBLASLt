@@ -101,26 +101,6 @@
     else if(paramType==HIP_R_8I)\
         static_cast<std::vector<device_vector<hipblasLtInt8>*>*>(vec_ptr)->at(i_input) = new device_vector<hipblasLtInt8>(param_1, param_2, param_3);
 
-
-#define delete_device_vector(vec_ptr, i_input, paramType)\
-    if(paramType==HIP_R_32F)\
-        delete_device_vector_type(static_cast<std::vector<device_vector<float>*>*>(vec_ptr)->at(i_input));\
-    else if(paramType==HIP_R_64F)\
-        delete_device_vector_type(static_cast<std::vector<device_vector<double>*>*>(vec_ptr)->at(i_input));\
-    else if(paramType==HIP_R_16F)\
-        delete_device_vector_type(static_cast<std::vector<device_vector<hipblasLtHalf>*>*>(vec_ptr)->at(i_input));\
-    else if(paramType==HIP_R_16BF)\
-        delete_device_vector_type(static_cast<std::vector<device_vector<hip_bfloat16>*>*>(vec_ptr)->at(i_input));\
-    else if(paramType==HIP_R_8F_E4M3_FNUZ)\
-        delete_device_vector_type(static_cast<std::vector<device_vector<hipblaslt_f8_fnuz>*>*>(vec_ptr)->at(i_input));\
-    else if(paramType==HIP_R_8F_E5M2_FNUZ)\
-        delete_device_vector_type(static_cast<std::vector<device_vector<hipblaslt_bf8_fnuz>*>*>(vec_ptr)->at(i_input));\
-    else if(paramType==HIP_R_32I)\
-        delete_device_vector_type(static_cast<std::vector<device_vector<int32_t>*>*>(vec_ptr)->at(i_input));\
-    else if(paramType==HIP_R_8I)\
-        delete_device_vector_type(static_cast<std::vector<device_vector<hipblasLtInt8>*>*>(vec_ptr)->at(i_input));
-
-
 #define new_host_vector(vec_ptr, i_input, paramType, param_1)\
     if(paramType==HIP_R_32F)\
         static_cast<std::vector<host_vector<float>*>*>(vec_ptr)->at(i_input) = new host_vector<float>(param_1);\
@@ -139,6 +119,41 @@
     else if(paramType==HIP_R_8I)\
         static_cast<std::vector<host_vector<hipblasLtInt8>*>*>(vec_ptr)->at(i_input) = new host_vector<hipblasLtInt8>(param_1);
 
+#define delete_device_vector_head(vec_ptr, paramType)\
+    if(paramType==HIP_R_32F)\
+        delete_vector_type(static_cast<std::vector<device_vector<float>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_64F)\
+        delete_vector_type(static_cast<std::vector<device_vector<double>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_16F)\
+        delete_vector_type(static_cast<std::vector<device_vector<hipblasLtHalf>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_16BF)\
+        delete_vector_type(static_cast<std::vector<device_vector<hip_bfloat16>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_8F_E4M3_FNUZ)\
+        delete_vector_type(static_cast<std::vector<device_vector<hipblaslt_f8_fnuz>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_8F_E5M2_FNUZ)\
+        delete_vector_type(static_cast<std::vector<device_vector<hipblaslt_bf8_fnuz>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_32I)\
+        delete_vector_type(static_cast<std::vector<device_vector<int32_t>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_8I)\
+        delete_vector_type(static_cast<std::vector<device_vector<hipblasLtInt8>*>*>(vec_ptr));
+
+#define delete_host_vector_head(vec_ptr, paramType)\
+    if(paramType==HIP_R_32F)\
+        delete_vector_type(static_cast<std::vector<host_vector<float>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_64F)\
+        delete_vector_type(static_cast<std::vector<host_vector<double>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_16F)\
+        delete_vector_type(static_cast<std::vector<host_vector<hipblasLtHalf>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_16BF)\
+        delete_vector_type(static_cast<std::vector<host_vector<hip_bfloat16>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_8F_E4M3_FNUZ)\
+        delete_vector_type(static_cast<std::vector<host_vector<hipblaslt_f8_fnuz>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_8F_E5M2_FNUZ)\
+        delete_vector_type(static_cast<std::vector<host_vector<hipblaslt_bf8_fnuz>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_32I)\
+        delete_vector_type(static_cast<std::vector<host_vector<int32_t>*>*>(vec_ptr));\
+    else if(paramType==HIP_R_8I)\
+        delete_vector_type(static_cast<std::vector<host_vector<hipblasLtInt8>*>*>(vec_ptr));
 
 #define type_to_param(Type)\
     if(std::is_same<Type, float>::value) paramType_Ti=HIP_R_32F;  \

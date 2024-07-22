@@ -73,11 +73,11 @@ extern "C" __global__ void flush_icache()
 }
 
 
-template<typename Tp> //device_vector<Type>*
-void delete_device_vector_type(Tp vec_ptr){
+template<typename Tp> //device_vector<Type>* or host
+void delete_vector_type(Tp vec_ptr){
     if(vec_ptr != nullptr)
     {
-        delete vec_ptr; //addr is 0x21?
+        delete vec_ptr;
     }
 }
 
@@ -2335,7 +2335,6 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                 delete dD[i];
 
             //delete dBias[i];
-            //delete_device_vector(dBias, i, tbias);
             use_device_vector(dBias, tbias,
                 delete vec[i]
                 , i);
@@ -3380,16 +3379,9 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
         }
     }
     //void* dXXX = new std::vector<...>(gemm_count);
-    //double free error?
-    /*use_device_vector(dBias, tbias,
-        delete &vec
-        , NULL);
-    use_host_vector(hBias, tbias,
-        delete &vec
-        , NULL);
-    use_host_vector(hBias_gold, tbias,
-        delete &vec
-        , NULL);*/
+    delete_device_vector_head(dBias, tbias);
+    delete_host_vector_head(hBias, tbias);
+    delete_host_vector_head(hBias_gold, tbias);
 
     CHECK_HIP_ERROR(hipStreamDestroy(stream));
     CHECK_HIP_ERROR(hipEventDestroy(event_gpu_time_start));
