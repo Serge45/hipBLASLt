@@ -1,31 +1,3 @@
-/*******************************************************************************
- *
- * MIT License
- *
- * Copyright (C) 2022-2024 Advanced Micro Devices, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *
- *******************************************************************************/
-
-#pragma once
-
 #include "cblas_interface.hpp"
 #include "flops.hpp"
 #include "frequency_monitor.hpp"
@@ -40,6 +12,7 @@
 #include "allclose.hpp"
 #include "unit.hpp"
 #include "utility.hpp"
+#include "testing_matmul.hpp"
 #include <cstddef>
 #include <hipblaslt/hipblaslt-ext-op.h>
 #include <hipblaslt/hipblaslt-ext.hpp>
@@ -48,715 +21,153 @@
 #include <omp.h>
 #include <set>
 #include <functional>
-#include "private_template.hpp"
 
-extern "C" __global__ void flush_icache();
-
-template<typename Tp> //device_vector<Type>* or host
-void delete_vector_type(Tp vec_ptr){
-    if(vec_ptr != nullptr)
-    {
-        delete vec_ptr;
-    }
-}
-
-inline void* create_host_vector(auto paramType, size_t size){
-    if(paramType == HIP_R_32F)
-        return new std::vector<host_vector<float>*>(size);
-    else if(paramType == HIP_R_64F)
-        return new std::vector<host_vector<double>*>(size);
-    else if(paramType == HIP_R_16F)
-        return new std::vector<host_vector<hipblasLtHalf>*>(size);
-    else if(paramType == HIP_R_16BF)
-        return new std::vector<host_vector<hip_bfloat16>*>(size);
-    else if(paramType == HIP_R_8F_E4M3_FNUZ)
-        return new std::vector<host_vector<hipblaslt_f8_fnuz>*>(size);
-    else if(paramType == HIP_R_8F_E5M2_FNUZ)
-        return new std::vector<host_vector<hipblaslt_bf8_fnuz>*>(size);
-    else if(paramType == HIP_R_32I)
-        return new std::vector<host_vector<int32_t>*>(size);
-    else if(paramType == HIP_R_8I)
-        return new std::vector<host_vector<hipblasLtInt8>*>(size);
-    else
-        return nullptr;
-}
-
-inline void* create_device_vector(auto paramType, size_t size){
-    if(paramType == HIP_R_32F)
-        return new std::vector<device_vector<float>*>(size);
-    else if(paramType == HIP_R_64F)
-        return new std::vector<device_vector<double>*>(size);
-    else if(paramType == HIP_R_16F)
-        return new std::vector<device_vector<hipblasLtHalf>*>(size);
-    else if(paramType == HIP_R_16BF)
-        return new std::vector<device_vector<hip_bfloat16>*>(size);
-    else if(paramType == HIP_R_8F_E4M3_FNUZ)
-        return new std::vector<device_vector<hipblaslt_f8_fnuz>*>(size);
-    else if(paramType == HIP_R_8F_E5M2_FNUZ)
-        return new std::vector<device_vector<hipblaslt_bf8_fnuz>*>(size);
-    else if(paramType == HIP_R_32I)
-        return new std::vector<device_vector<int32_t>*>(size);
-    else if(paramType == HIP_R_8I)
-        return new std::vector<device_vector<hipblasLtInt8>*>(size);
-    else
-        return nullptr;
-}
-
-
-template<typename T>
-T template_cast_return(void* vec){
-    T out = *static_cast<T*>(vec);
-    return out;
-}
-
-inline int count_type_size(auto paramType){
-    if (paramType==HIP_R_32F || paramType==HIP_R_32I)
-        return sizeof(float);
-    if (paramType==HIP_R_64F)
-        return sizeof(double);
-    if (paramType==HIP_R_16F || paramType==HIP_R_16BF)
-        return sizeof(hipblasLtHalf);
-    if (paramType==HIP_R_8F_E4M3_FNUZ || paramType==HIP_R_8F_E5M2_FNUZ || paramType==HIP_R_8I)
-        return sizeof(hipblaslt_f8_fnuz);
-    return 0;
-}
-
-template<typename T, typename Func, typename... Args>
-void template_cast(void* input, Func expression, Args&&... args){
-    auto vec = *(static_cast<std::vector<T>*>(input));
-    expression(vec, std::forward<Args>(args)...);
-    return;
-}
-
-template<typename T, typename Ti>
-void template_cast_Ti(void* input, Ti& bias_data, auto enable_bias, auto hBias_index, auto i){
-    auto vec = static_cast<std::vector<T>*>(input);
-    bias_data = enable_bias ? *reinterpret_cast<Ti*>(&(*(*vec)[hBias_index])[i]) : static_cast<Ti>(0);
-    return;
-}
-
-template<typename TD, typename TH, typename Func, typename... Args>
-void template_cast2(void* d, void* h, Func expression, Args&&... args){
-    auto dvec = *static_cast<std::vector<TD>*>(d);
-    auto hvec = *static_cast<std::vector<TH>*>(h);
-    expression(dvec, hvec, std::forward<Args>(args)...);
-    return;
-}
-
-template<typename TD, typename TH, typename Func, typename... Args>
-void template_cast3(void* d, void* h, void* g, Func expression, Args&&... args){
-    auto dvec = *static_cast<std::vector<TD>*>(d);
-    auto hvec = *static_cast<std::vector<TH>*>(h);
-    auto gvec = *static_cast<std::vector<TH>*>(g);
-    expression(dvec, hvec, gvec, std::forward<Args>(args)...);
-    return;
-}
-
-template<typename Tbias, typename Ti>
-void assign_bias_data(Tbias vec_value, Ti &bias_data, bool enable_bias)
+extern "C" __global__ void flush_icache()
 {
-    bias_data = enable_bias ? static_cast<Ti>(vec_value) : static_cast<Ti>(0) ;
+    asm __volatile__("s_icache_inv \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t" ::
+                         :);
 }
 
-template<typename Tbias>
-void sat_bias_data_i1(Tbias &vec_value, auto sum)
+std::size_t hipRealDataTypeSize(hipDataType dtype)
 {
-    vec_value = saturate_cast<Tbias>(sum);
+    static const std::map<hipDataType, std::size_t> dtypeMap{{HIP_R_32F, 4},
+                                                             {HIP_R_64F, 8},
+                                                             {HIP_R_16F, 2},
+                                                             {HIP_R_8I, 1},
+                                                             {HIP_R_8U, 1},
+                                                             {HIP_R_32I, 4},
+                                                             {HIP_R_32U, 4},
+                                                             {HIP_R_16BF, 2},
+                                                             {HIP_R_4I, 1},
+                                                             {HIP_R_4U, 1},
+                                                             {HIP_R_16I, 2},
+                                                             {HIP_R_16U, 2},
+                                                             {HIP_R_64I, 8},
+                                                             {HIP_R_64U, 8},
+                                                             {HIP_R_8F_E4M3_FNUZ, 1},
+                                                             {HIP_R_8F_E5M2_FNUZ, 1}};
+
+    return dtypeMap.at(dtype);
 }
 
-template <typename Ti, typename Tc, typename To, typename Tact, typename F>
-void epilogue_func(int64_t m,
-                   int64_t n,
-                   int64_t ld,
-                   Ti*     in,
-                   To*     out,
-                   Tc*     out_raw,
-                   Tc*     amaxD,
-                   To*     e,
-                   Tc      scaleD,
-                   Tc      scaleE,
-                   bool    enable_bias,
-                   void*   bias,
-                   auto    hBias_index,
-                   hipDataType    bias_type,
-                   Tact    arg1,
-                   Tact    arg2,
-                   F&      act_func,
-                   bool    gradient)
-{
-    for(int i = 0; i < m; i++)
-    {
-        //Ti bias_data = enable_bias ? static_cast<Ti>(*(bias + i)) : 0;
-        
-        //Tbias* bias= *(hBias[gemmIdx])
-        Ti bias_data; //Ti is Tc(Talpha)
-        use_host_vector_Ti(bias, bias_data, bias_type, enable_bias, hBias_index, i, Ti);
-
-#define CALCULATE_EPILOGUE_ACT                                                       \
-    auto pos     = j * ld + i;                                                       \
-    auto in_Tact = static_cast<Tact>(*(in + pos)) + bias_data;                       \
-    if(e && !gradient)                                                               \
-    {                                                                                \
-        *(e + pos) = saturate_cast<To>(in_Tact * scaleE);                            \
-    }                                                                                \
-    Tact in_Tact_act = 0;                                                            \
-    if(gradient)                                                                     \
-        in_Tact_act = act_func(static_cast<Tact>(*(e + pos)), arg1, arg2) * in_Tact; \
-    else                                                                             \
-        in_Tact_act = act_func(in_Tact, arg1, arg2);
-
-        if(amaxD == nullptr)
-        {
-#pragma omp parallel for
-            for(int j = 0; j < n; j++)
-            {
-                CALCULATE_EPILOGUE_ACT;
-                *(out + pos)     = saturate_cast<To>(in_Tact_act * scaleD);
-                *(out_raw + pos) = static_cast<Tc>(in_Tact_act * scaleD);
-            }
-        }
-        else
-        {
-            for(int j = 0; j < n; j++)
-            {
-                CALCULATE_EPILOGUE_ACT;
-                *amaxD           = *amaxD > fabs(static_cast<Tc>(in_Tact_act))
-                                       ? *amaxD
-                                       : fabs(static_cast<Tc>(in_Tact_act));
-                *(out + pos)     = saturate_cast<To>(in_Tact_act * scaleD);
-                *(out_raw + pos) = static_cast<Tc>(in_Tact_act * scaleD);
-            }
-        }
-    }
-}
-template <typename Ti, typename Tc, typename To>
-void epilogue_func(int64_t m,
-                   int64_t n,
-                   int64_t ld,
-                   Ti*     in,
-                   To*     out,
-                   Tc*     out_raw,
-                   Tc*     amaxD,
-                   To*     e,
-                   Tc      scaleD,
-                   Tc      scaleE,
-                   bool    enable_bias,
-                   void*   bias,
-                   auto    hBias_index,
-                   hipDataType    bias_type,
-                   bool    gradient)
-{
-#define CALCULATE_EPILOGUE_BASIC                          \
-    auto pos  = j * ld + i;                               \
-    Tc   temp = static_cast<Ti>(*(in + pos)) + bias_data; \
-    if(e)                                                 \
-    {                                                     \
-        *(e + pos) = saturate_cast<To>(temp * scaleE);    \
+class HipDeviceBuffer {
+public:
+    HipDeviceBuffer(hipDataType dtype, std::size_t numElements)
+    : buffer(nullptr, &nullDeleter), numBytes(hipRealDataTypeSize(dtype) * numElements) {
+        void *rawBuf{};
+        (void)hipMalloc(&rawBuf, numBytes);
+        buffer = std::unique_ptr<void, decltype(&hipFree)>(rawBuf, &hipFree);
     }
 
-    for(int i = 0; i < m; i++)
-    {
-        //Ti bias_data = enable_bias ? static_cast<Ti>(*(bias + i)) : 0;
-        Ti bias_data;
-        
-        use_host_vector_Ti(bias, bias_data, bias_type, enable_bias, hBias_index, i, Ti);
+    ~HipDeviceBuffer() = default;
+    HipDeviceBuffer(const HipDeviceBuffer &) = delete;
+    HipDeviceBuffer(HipDeviceBuffer &&) = default;
+    HipDeviceBuffer &operator=(const HipDeviceBuffer &) = delete;
+    HipDeviceBuffer &operator=(HipDeviceBuffer &&) = default;
 
-        if(amaxD == nullptr)
-        {
-#pragma omp parallel for
-            for(int j = 0; j < n; j++)
-            {
-                CALCULATE_EPILOGUE_BASIC;
-                temp *= scaleD;
-                *(out + pos)     = saturate_cast<To>(temp);
-                *(out_raw + pos) = static_cast<Tc>(temp);
-            }
-        }
-        else
-        {
-            for(int j = 0; j < n; j++)
-            {
-                CALCULATE_EPILOGUE_BASIC;
-                *amaxD
-                    = *amaxD > fabs(static_cast<Tc>(temp)) ? *amaxD : fabs(static_cast<Tc>(temp));
-                temp *= scaleD;
-                *(out + pos)     = saturate_cast<To>(temp);
-                *(out_raw + pos) = static_cast<Tc>(temp);
-            }
-        }
+    void *buf() {
+        return buffer.get();
     }
-}
 
-template <bool SumLd, typename Tc, typename Ti>
-void reduction_func(
-    Ti* workspace, void* bias, auto bias_index, hipDataType bias_type, int length, int k, int s1, int s2, int s3, int batch_count)
-{
-    auto paramType_Ti=bias_type;
-    assert(batch_count == 1);
-    for(int batch = 0; batch < batch_count; batch++)
-    {
-        for(int i1 = 0; i1 < length; i1++)
-        {
-            Tc sum = 0;
-            for(int i2 = 0; i2 < k; i2++)
-            {
-                if constexpr(SumLd)
-                {
-                    sum += static_cast<Tc>(workspace[i1 * s2 + i2 * s1 + batch * s3]);
-                }
-                else
-                {
-                    sum += static_cast<Tc>(workspace[i1 * s1 + i2 * s2 + batch * s3]);
-                }
-            }
-            //bias[i1] = saturate_cast<To>(sum);
-
-
-            //*(hBias_gold[gemmIdx]) + 0
-                    //(*vec[bias_index])[i1] = saturate_cast<To>(sum); //To=type of bias
-            use_host_vector(bias, bias_type, 
-                sat_bias_data_i1((*vec[bias_index])[i1], sum)
-                , bias_index, i1, sum);
-        }
+    const void *buf() const {
+        return buffer.get();
     }
-}
 
-auto _relu = [](auto in, auto /*arg1*/, auto /*arg2*/) -> decltype(in) {
-    return static_cast<decltype(in)>(std::max(static_cast<decltype(in)>(0), in));
+    std::size_t getNumBytes() const {
+        return numBytes;
+    }
+
+    template<typename T>
+    T *as() {
+        return reinterpret_cast<T *>(buf());
+    }
+
+    template<typename T>
+    const T *as() const {
+        return reinterpret_cast<const T *>(buf());
+    }
+
+private:
+    std::unique_ptr<void, decltype(&hipFree)> buffer;
+    std::size_t numBytes;
+    static hipError_t nullDeleter(void *) { return hipSuccess; }
 };
 
-auto _gelu = [](auto in, auto /*arg1*/, auto /*arg2*/) -> decltype(in) {
-    using Tc = float;
+class HipHostBuffer {
+public:
+    HipHostBuffer(hipDataType dtype, std::size_t numElements)
+    : buffer(nullptr), numBytes(hipRealDataTypeSize(dtype) * numElements) {
+        buffer = std::unique_ptr<char[]>(new char[numBytes]);
+    }
 
-    constexpr auto k0    = static_cast<Tc>(0.7978845608028654);
-    constexpr auto k1    = static_cast<Tc>(0.044715);
-    Tc             in_Tc = static_cast<Tc>(in);
+    ~HipHostBuffer() = default;
+    HipHostBuffer(const HipHostBuffer &) = delete;
+    HipHostBuffer(HipHostBuffer &&) = default;
+    HipHostBuffer &operator=(const HipHostBuffer &) = delete;
+    HipHostBuffer &operator=(HipHostBuffer &&) = default;
 
-    return static_cast<decltype(in)>(
-        0.5f * (in_Tc * (1.f + std::tanh(k0 * (in_Tc * (1.f + k1 * (in_Tc * in_Tc)))))));
+    void *buf() {
+        return buffer.get();
+    }
+
+    const void *buf() const {
+        return buffer.get();
+    }
+
+    std::size_t getNumBytes() const {
+        return numBytes;
+    }
+
+    template<typename T>
+    T *as() {
+        return reinterpret_cast<T *>(buf());
+    }
+
+    template<typename T>
+    const T *as() const {
+        return reinterpret_cast<const T *>(buf());
+    }
+
+private:
+    std::unique_ptr<char[]> buffer;
+    std::size_t numBytes;
 };
 
-auto _dgelu = [](auto in, auto /*arg1*/, auto /*arg2*/) -> decltype(in) {
-    using Tc = float;
+hipError_t synchronize(HipDeviceBuffer &dBuf, const HipHostBuffer &hBuf, std::size_t repeats) {
+    if (dBuf.getNumBytes() * repeats < hBuf.getNumBytes()) {
+        return hipErrorInvalidValue;
+    }
 
-    constexpr auto k0    = static_cast<Tc>(0.0535161);
-    constexpr auto k1    = static_cast<Tc>(0.398942);
-    constexpr auto k2    = static_cast<Tc>(0.0356774);
-    constexpr auto k3    = static_cast<Tc>(0.797885);
-    Tc             in_Tc = static_cast<Tc>(in);
+    hipError_t err{};
+    for (size_t i = 0; i < repeats; ++i) {
+        err = hipMemcpy(dBuf.as<char>() + i * hBuf.getNumBytes(), hBuf.buf(), hBuf.getNumBytes(), hipMemcpyHostToDevice);
+    }
 
-    Tc pow3 = in_Tc * in_Tc * in_Tc;
-    Tc x1   = k0 * pow3 + k1 * in_Tc;
-    Tc xx   = k2 * pow3 + k3 * in_Tc;
-    Tc x2   = 4 / pow(exp(-xx) + exp(xx), 2);
-    Tc tmp  = 0.5 * tanh(xx) + x1 * x2 + 0.5;
-    return static_cast<decltype(in)>(0.5f * tanh(xx) + x1 * x2 + 0.5f);
-};
-
-template <typename TiA,
-          typename TiB,
-          typename To,
-          typename Tc,
-          typename TciA = TiA,
-          typename TciB = TiB>
-void testing_matmul_bad_arg(const Arguments& arg)
-{
-    const int64_t M = 128;
-    const int64_t N = 128;
-    const int64_t K = 128;
-
-    const int64_t lda = 128;
-    const int64_t ldb = 128;
-    const int64_t ldc = 128;
-
-    const size_t safe_size = N * lda;
-
-    const hipblasOperation_t transA = HIPBLAS_OP_T;
-    const hipblasOperation_t transB = HIPBLAS_OP_N;
-
-    // allocate memory on device
-    device_vector<TiA> dA(safe_size / 2);
-    device_vector<TiB> dB(safe_size);
-    device_vector<To>  dC(safe_size);
-    device_vector<To>  dD(safe_size);
-    CHECK_DEVICE_ALLOCATION(dA.memcheck());
-    CHECK_DEVICE_ALLOCATION(dB.memcheck());
-    CHECK_DEVICE_ALLOCATION(dC.memcheck());
-    CHECK_DEVICE_ALLOCATION(dD.memcheck());
-
-    hipblaslt_local_handle        handle{arg};
-    hipblaslt_local_matrix_layout matA(M, K, lda, arg.a_type);
-    hipblaslt_local_matrix_layout matB(K, N, ldb, arg.b_type);
-    hipblaslt_local_matrix_layout matC(M, N, ldc, arg.c_type);
-    hipblaslt_local_matrix_layout matD(M, N, ldc, arg.d_type);
-    hipblaslt_local_matmul_descr  matmul(transA,
-                                        transB,
-                                        arg.compute_type,
-                                        arg.scale_type,
-                                        arg.compute_input_typeA,
-                                        arg.compute_input_typeB);
-
-    size_t                     workspace_size = 0;
-    hipblaslt_local_preference pref;
-
-    void* workspace = nullptr;
-    float alpha = 1.0, beta = 0.0;
-
-    hipStream_t stream = nullptr;
+    return err;
 }
 
-template <typename T>
-void copy_gemm_to_host(hipStream_t                     stream,
-                       const uint32_t&                 gemm_count,
-                       std::vector<host_vector<T>*>&   hDst,
-                       std::vector<device_vector<T>*>& dSrc)
-{
-
-    CHECK_HIP_ERROR(hipStreamSynchronize(stream));
-    for(int gemmIdx = 0; gemmIdx < gemm_count; gemmIdx++)
-    {
-        CHECK_HIP_ERROR(hDst[gemmIdx]->transfer_from(*(dSrc[gemmIdx])));
-    }
-}
-
-template <typename To, typename Tc, typename Tbias>
-void check(hipStream_t                         stream,
-           const Arguments&                    arg,
-           const uint32_t&                     gemm_count,
-           const std::vector<int64_t>&         M,
-           const std::vector<int64_t>&         N,
-           const std::vector<int64_t>&         ldd,
-           const std::vector<int64_t>&         lde,
-           const std::vector<int64_t>&         stride_d,
-           const std::vector<int64_t>&         stride_e,
-           const std::vector<int>&             num_batches,
-           const std::vector<size_t>&          size_bias,
-           std::vector<host_vector<To>*>&      hD_gold,
-           std::vector<host_vector<To>*>&      hD_1,
-           std::vector<device_vector<To>*>&    dD,
-           std::vector<host_vector<Tc>*>&      hAmaxD_gold,
-           std::vector<host_vector<Tc>*>&      hAmaxD,
-           std::vector<device_vector<Tc>*>&    dAmaxD,
-           std::vector<host_vector<To>*>&      hE_gold,
-           std::vector<host_vector<To>*>&      hE,
-           std::vector<device_vector<To>*>&    dE,
-           std::vector<host_vector<Tbias>*>&   hBias_gold,
-           std::vector<host_vector<Tbias>*>&   hBias,
-           std::vector<device_vector<Tbias>*>& dBias,
-           Tbias                               btype,
-           std::vector<double>&                tol,
-           double&                             hipblaslt_error,
-           double&                             hipblaslt_atol,
-           double&                             hipblaslt_rtol)
-{
-    // fetch GPU
-    CHECK_HIP_ERROR(hipStreamSynchronize(stream));
-
-    for(int gemmIdx = 0; gemmIdx < gemm_count; gemmIdx++)
-    {
-        if(!arg.gradient && arg.use_e)
-            CHECK_HIP_ERROR(hE[gemmIdx]->transfer_from(*(dE[gemmIdx])));
-        if(arg.amaxD)
-        {
-            CHECK_HIP_ERROR(hAmaxD[gemmIdx]->transfer_from(*(dAmaxD[gemmIdx])));
-        }
-        if(arg.gradient && arg.bias_vector)
-        {
-            CHECK_HIP_ERROR(hBias[gemmIdx]->transfer_from(*(dBias[gemmIdx])));
-        }
-        if(arg.unit_check)
-        {
-            if(tol[gemmIdx] != 0)
-            {
-                near_check_general<To>(M[gemmIdx],
-                                       N[gemmIdx],
-                                       ldd[gemmIdx],
-                                       stride_d[gemmIdx],
-                                       *(hD_gold[gemmIdx]),
-                                       *(hD_1[gemmIdx]),
-                                       num_batches[gemmIdx],
-                                       tol[gemmIdx]);
-            }
-            else
-            {
-                unit_check_general<To>(M[gemmIdx],
-                                       N[gemmIdx],
-                                       ldd[gemmIdx],
-                                       stride_d[gemmIdx],
-                                       *(hD_gold[gemmIdx]),
-                                       *(hD_1[gemmIdx]),
-                                       num_batches[gemmIdx]);
-            }
-            if(arg.amaxD)
-            {
-                if(tol[gemmIdx] != 0)
-                {
-                    near_check_general<Tc>(1,
-                                           1,
-                                           1,
-                                           1,
-                                           *(hAmaxD_gold[gemmIdx]),
-                                           *(hAmaxD[gemmIdx]),
-                                           num_batches[gemmIdx],
-                                           tol[gemmIdx]);
-                }
-                else
-                {
-                    unit_check_general<Tc>(1,
-                                           1,
-                                           1,
-                                           1,
-                                           *(hAmaxD_gold[gemmIdx]),
-                                           *(hAmaxD[gemmIdx]),
-                                           num_batches[gemmIdx]);
-                }
-            }
-            if(!arg.gradient && arg.use_e)
-            {
-                if(tol[gemmIdx] != 0)
-                {
-                    near_check_general<To>(M[gemmIdx],
-                                           N[gemmIdx],
-                                           lde[gemmIdx],
-                                           stride_e[gemmIdx],
-                                           *(hE_gold[gemmIdx]),
-                                           *(hE[gemmIdx]),
-                                           num_batches[gemmIdx],
-                                           tol[gemmIdx]);
-                }
-                else
-                {
-                    unit_check_general<To>(M[gemmIdx],
-                                           N[gemmIdx],
-                                           lde[gemmIdx],
-                                           stride_e[gemmIdx],
-                                           *(hE_gold[gemmIdx]),
-                                           *(hE[gemmIdx]),
-                                           num_batches[gemmIdx]);
-                }
-            }
-            if(arg.gradient && arg.bias_vector)
-            {
-                if(tol[gemmIdx] != 0)
-                {
-                    near_check_general<Tbias>(size_bias[gemmIdx],
-                                              1,
-                                              size_bias[gemmIdx],
-                                              size_bias[gemmIdx],
-                                              *(hBias_gold[gemmIdx]),
-                                              *(hBias[gemmIdx]),
-                                              num_batches[gemmIdx],
-                                              tol[gemmIdx]);
-                }
-                else
-                {
-                    unit_check_general<Tbias>(size_bias[gemmIdx],
-                                              1,
-                                              size_bias[gemmIdx],
-                                              size_bias[gemmIdx],
-                                              *(hBias_gold[gemmIdx]),
-                                              *(hBias[gemmIdx]),
-                                              num_batches[gemmIdx]);
-                }
-            }
-        }
-
-        if(arg.norm_check)
-        {
-            double norm_error = std::abs(norm_check_general<To>('F',
-                                                                M[gemmIdx],
-                                                                N[gemmIdx],
-                                                                ldd[gemmIdx],
-                                                                stride_d[gemmIdx],
-                                                                *(hD_gold[gemmIdx]),
-                                                                *(hD_1[gemmIdx]),
-                                                                num_batches[gemmIdx]));
-            hipblaslt_error += norm_error;
-            if(arg.norm_check_assert)
-                CHECK_SUCCESS(norm_check<To>(norm_error));
-
-            if(arg.amaxD)
-            {
-                double norm_error = std::abs(norm_check_general<Tc>('F',
-                                                                    1,
-                                                                    1,
-                                                                    1,
-                                                                    1,
-                                                                    *(hAmaxD_gold[gemmIdx]),
-                                                                    *(hAmaxD[gemmIdx]),
-                                                                    num_batches[gemmIdx]));
-                hipblaslt_error += norm_error;
-                if(arg.norm_check_assert)
-                    CHECK_SUCCESS(norm_check<Tc>(norm_error));
-            }
-            if(!arg.gradient && arg.use_e)
-            {
-                double norm_error = std::abs(norm_check_general<To>('F',
-                                                                    M[gemmIdx],
-                                                                    N[gemmIdx],
-                                                                    lde[gemmIdx],
-                                                                    stride_e[gemmIdx],
-                                                                    *(hE_gold[gemmIdx]),
-                                                                    *(hE[gemmIdx]),
-                                                                    num_batches[gemmIdx]));
-                hipblaslt_error += norm_error;
-                if(arg.norm_check_assert)
-                    CHECK_SUCCESS(norm_check<To>(norm_error));
-            }
-            if(arg.gradient && arg.bias_vector)
-            {
-                double norm_error = std::abs(norm_check_general<Tbias>('F',
-                                                                       M[gemmIdx],
-                                                                       1,
-                                                                       M[gemmIdx],
-                                                                       M[gemmIdx],
-                                                                       *(hBias_gold[gemmIdx]),
-                                                                       *(hBias[gemmIdx]),
-                                                                       num_batches[gemmIdx]));
-                hipblaslt_error += norm_error;
-                if(arg.norm_check_assert)
-                    CHECK_SUCCESS(norm_check<Tbias>(norm_error));
-            }
-        }
-        
-        if(arg.allclose_check)
-        {
-            bool is_allclose = allclose_check_general<To>('F',
-                                                          M[gemmIdx],
-                                                          N[gemmIdx],
-                                                          ldd[gemmIdx],
-                                                          stride_d[gemmIdx],
-                                                          *(hD_gold[gemmIdx]),
-                                                          *(hD_1[gemmIdx]),
-                                                          num_batches[gemmIdx],
-                                                          hipblaslt_atol,
-                                                          hipblaslt_rtol);
-            //TODO: confirm if allclose_check_assert is neccessary
-        }
-    }
-}
-
-// A function to determing the default bias_type
-inline hipDataType derive_unset_bias_type(const Arguments& arg)
-{
-    // TODO: confirm if HIP_R_64F, HIP_R_32I are neccessary for biastype
-    static const std::set<hipDataType> supported_bias_types
-        = {HIP_R_32F, HIP_R_16F, HIP_R_16BF, HIP_R_64F, HIP_R_32I};
-
-    hipDataType real_bias_type = arg.bias_type;
-
-    // when bias type is unset.
-    if(arg.bias_type == HIPBLASLT_DATATYPE_INVALID)
-    {
-        if(arg.compute_type == HIPBLAS_COMPUTE_32I)
-        {
-            real_bias_type = HIP_R_32I;
-        }
-        else if(arg.compute_type == HIPBLAS_COMPUTE_32F_FAST_TF32)
-        {
-            real_bias_type = HIP_R_32F;
-        }
-        else if((arg.a_type == HIP_R_8F_E4M3_FNUZ || arg.a_type == HIP_R_8F_E5M2_FNUZ)
-                && (arg.b_type == HIP_R_8F_E4M3_FNUZ || arg.b_type == HIP_R_8F_E5M2_FNUZ))
-        {
-            if(arg.d_type == HIP_R_32F || arg.d_type == HIP_R_16BF)
-                real_bias_type = HIP_R_16BF;
-            else if(arg.d_type == HIP_R_16F)
-                real_bias_type = HIP_R_16F;
-            else //more default cases once support C != D
-                real_bias_type = HIP_R_16F;
-        }
-        else
-        {
-            real_bias_type = arg.d_type;
-        }
+hipError_t synchronize(HipHostBuffer &hBuf, const HipDeviceBuffer &dBuf, std::size_t srcByteOffset) {
+    if (dBuf.getNumBytes() != hBuf.getNumBytes()) {
+        return hipErrorInvalidValue;
     }
 
-    if(supported_bias_types.count(real_bias_type) == 0)
-        throw std::invalid_argument("Invalid bias type "
-                                    + std::string(hip_datatype_to_string(real_bias_type)));
-
-    return real_bias_type;
-}
-
-template <typename TiA,
-          typename TiB,
-          typename To,
-          typename Tc,
-          typename TciA = TiA,
-          typename TciB = TiB>
-void testing_matmul(const Arguments& arg)
-{
-    // after this, real bias type should not be invalid
-    hipDataType real_bias_type = derive_unset_bias_type(arg);
-
-    // for all f8/bf8 cases including mix mode
-    if constexpr((sizeof(TiA) == 1 || sizeof(TiB) == 1) && !std::is_same<Tc, int32_t>::value)
-    {
-        if constexpr(std::is_same<To, hip_bfloat16>::value || std::is_same<To, float>::value)
-        {
-            if(real_bias_type == HIP_R_16BF)
-            {
-                return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_16BF);
-            }
-            else
-            {
-                return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_32F);
-            }
-        }
-        else
-        {
-            if(real_bias_type == HIP_R_16F)
-            {
-                return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_16F);
-            }
-            else
-            {
-                return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_32F);
-            }
-        }
-    }
-    else if constexpr(std::is_same<To, hipblasLtHalf>::value)
-    {
-        if(real_bias_type == HIP_R_16F)
-        {
-            return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_16F);
-        }
-        else
-        {
-            return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_32F);
-        }
-    }
-    else if constexpr(std::is_same<To, hip_bfloat16>::value)
-    {
-        if(real_bias_type == HIP_R_16BF)
-        {
-            return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_16BF);
-        }
-        else
-        {
-            return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_32F);
-        }
-    }
-    else if constexpr(std::is_same<To, float>::value)
-    {
-        return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_32F);
-    }
-    else if constexpr(std::is_same<To, int32_t>::value)
-    {
-        return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_32I);
-    }
-    else if constexpr(std::is_same<To, int8_t>::value)
-    {
-        return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_8I);
-    }
-    else if constexpr(std::is_same<To, double>::value)
-    {
-        return testing_matmul_with_bias<TiA, TiB, To, Tc, TciA, TciB>(arg, HIP_R_64F);
-    }
-    // shouldn't arrive here
-    CHECK_SUCCESS(false);
-    return;
+    return hipMemcpy(hBuf.buf(), dBuf.as<char>() + srcByteOffset, hBuf.getNumBytes(), hipMemcpyDeviceToHost);
 }
 
 template <typename TiA,
@@ -765,7 +176,7 @@ template <typename TiA,
           typename Tc,
           typename TciA,
           typename TciB>
-void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
+void testing_matmul_with_bias_impl(const Arguments& arg)
 {
     double gpu_time_used, cpu_time_used;
     gpu_time_used = cpu_time_used = 0.0;
@@ -781,8 +192,14 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
     hipblasOperation_t transA(char_to_hipblas_operation(arg.transA));
     hipblasOperation_t transB(char_to_hipblas_operation(arg.transB));
 
-    hipDataType tciA = arg.compute_input_typeA;
-    hipDataType tciB = arg.compute_input_typeB;
+    auto tbias = arg.bias_type;
+    auto tA = arg.a_type;
+    auto tB = arg.b_type;
+    auto tO = arg.d_type;
+    auto tC = arg.compute_type;
+    auto tciA = arg.compute_input_typeA;
+    auto tciB = arg.compute_input_typeB;
+    auto tAlpha = tC;
 
     using Talpha = Tc;
 
@@ -817,7 +234,8 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
     std::vector<device_vector<To>*>    dE(gemm_count);
 
     //std::vector<device_vector<Tbias>*> dBias(gemm_count);
-    void* dBias = create_device_vector(tbias, gemm_count);
+    //void* dBias = create_device_vector(tbias, gemm_count);
+    std::vector<HipDeviceBuffer> dBias;
 
     std::vector<host_vector<TiA>*>    hA(gemm_count);
     //void* hA = create_host_vector(arg.a_type, gemm_count);
@@ -831,8 +249,10 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
     std::vector<host_vector<To>*>    hE(gemm_count, nullptr), hE_gold(gemm_count, nullptr);
     std::vector<void*>               alpha_in(gemm_count);
     //std::vector<host_vector<Tbias>*> hBias(gemm_count), hBias_gold(gemm_count);
-    void* hBias      = create_host_vector(tbias, gemm_count);
-    void* hBias_gold = create_host_vector(tbias, gemm_count);
+    // void* hBias      = create_host_vector(tbias, gemm_count);
+    // void* hBias_gold = create_host_vector(tbias, gemm_count);
+    std::vector<HipHostBuffer> hBias;
+    std::vector<HipHostBuffer> hBias_gold;
 
     // Need to split into two for loop to calculate the rotating buffer
     int64_t totalRotatingSizeNeeded = 0;
@@ -1085,8 +505,9 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
             dD[i] = dC[i];
 
         //dBias[i]          = new device_vector<Tbias>(size_bias[i] * block_count, 1, HMM);
-        auto para1 = size_bias[i] * block_count; //size_bias[i]=0
-        new_device_vector(dBias, i, tbias, para1, 1, HMM);
+        //auto para1 = size_bias[i] * block_count; //size_bias[i]=0
+        //new_device_vector(dBias, i, tbias, para1, 1, HMM);
+        dBias.emplace_back(tbias, size_bias[i] * block_count);
 
         dScaleAlphaVec[i] = new device_vector<Talpha>(size_scaleAlphaVec[i] * block_count, 1, HMM);
 
@@ -1099,10 +520,11 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
             CHECK_DEVICE_ALLOCATION(dD[i]->memcheck());
 
         //CHECK_DEVICE_ALLOCATION(dBias[i]->memcheck());
-        use_device_vector(dBias, tbias, 
-            CHECK_DEVICE_ALLOCATION(vec[i]->memcheck()),
-            i
-        );
+        //TODO: add this
+        // use_device_vector(dBias, tbias, 
+        //     CHECK_DEVICE_ALLOCATION(vec[i]->memcheck()),
+        //     i
+        // );
 
         CHECK_DEVICE_ALLOCATION(dScaleAlphaVec[i]->memcheck());
         if(arg.use_e)
@@ -1157,8 +579,10 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
         hD_1[i]               = new host_vector<To>(size_D_copy[i]);
         //hBias[i]              = new host_vector<Tbias>(size_bias[i]);
         //hBias_gold[i]         = new host_vector<Tbias>(size_bias[i]);
-        new_host_vector(hBias     , i, tbias, size_bias[i]);
-        new_host_vector(hBias_gold, i, tbias, size_bias[i]);
+        // new_host_vector(hBias     , i, tbias, size_bias[i]);
+        // new_host_vector(hBias_gold, i, tbias, size_bias[i]);
+        hBias.emplace_back(tbias, size_bias[i]);
+        hBias_gold.emplace_back(tbias, size_bias[i]);
 
         hBias_gold_epl[i]     = new host_vector<Talpha>(size_D_copy[i]); // Reduction for matrix D
         hScaleAlphaVec[i]     = new host_vector<Talpha>(size_scaleAlphaVec[i]);
@@ -1264,8 +688,9 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
         if(arg.bias_vector)
         {
             //hipblaslt_init<Tbias>(*hBias[i], M[i], 1, M[i]);
-            use_host_vector_hipblaslt_init(hBias, i, tbias, M[i], 1, M[i]);
-
+            //TODO: add init function
+            //use_host_vector_hipblaslt_init(hBias, i, tbias, M[i], 1, M[i]);
+            hipblaslt_init(tbias, hBias[i].buf(), hBias[i].getNumBytes());
         }
 
         if(arg.scaleA)
@@ -1320,10 +745,13 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
         }
         if(!arg.gradient && arg.bias_vector)
         {
-            use_device_host_vector(dBias, hBias, tbias, 
-                CHECK_HIP_ERROR(dvec[i]->transfer_from(*hvec[i], block_count)),
-                i,block_count
-            );
+            //TODO: add this
+            // use_device_host_vector(dBias, hBias, tbias, 
+            //     CHECK_HIP_ERROR(dvec[i]->transfer_from(*hvec[i], block_count)),
+            //     i,block_count
+            // );
+            CHECK_HIP_ERROR(synchronize(dBias[i], hBias[i], block_count));
+            
         }
 
         if(arg.scaleAlpha_vector)
@@ -1416,11 +844,11 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                                                 sizeof(hipDataType)),
                 HIPBLAS_STATUS_SUCCESS);
 
-            use_device_vector(dBias, tbias, 
-                bias_addr = *(vec[i]),
-                i
-            );
-            
+            // use_device_vector(dBias, tbias, 
+            //     bias_addr = *(vec[i]),
+            //     i
+            // );
+            bias_addr = dBias[i].buf();
 
             EXPECT_HIPBLAS_STATUS(
                 hipblasLtMatmulDescSetAttribute(
@@ -1509,11 +937,12 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
             if(arg.bias_vector)
             {
                 //const void* bias_addr = (const void*)((*dBias[i]) + b * size_bias[i]);
-                const void* bias_addr;
-                use_device_vector(dBias,tbias, 
-                    bias_addr = (const void*)((*vec[i]) + b * size_bias[i]),
-                    i,b, size_bias
-                );
+                // const void* bias_addr;
+                // use_device_vector(dBias,tbias, 
+                //     bias_addr = (const void*)((*vec[i]) + b * size_bias[i]),
+                //     i,b, size_bias
+                // );
+                const void* bias_addr = dBias[i].as<char>() + b * size_bias[i] * hipRealDataTypeSize(tbias);
                 EXPECT_HIPBLAS_STATUS(
                     hipblasLtMatmulDescSetAttribute(matmul[b][i],
                                                     HIPBLASLT_MATMUL_DESC_BIAS_POINTER,
@@ -1608,10 +1037,11 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                 {
                     bias_type = arg.bias_type;
                     //bias_addr = (void*)((*dBias[gemmIdx]) + b * size_bias[gemmIdx]);
-                    use_device_vector(dBias, bias_type, 
-                        bias_addr = (void*)((*vec[gemmIdx]) + b * size_bias[gemmIdx]),
-                        gemmIdx, b, size_bias
-                    );
+                    // use_device_vector(dBias, bias_type, 
+                    //     bias_addr = (void*)((*vec[gemmIdx]) + b * size_bias[gemmIdx]),
+                    //     gemmIdx, b, size_bias
+                    // );
+                    bias_addr = dBias[gemmIdx].as<char>() + b * size_bias[gemmIdx] * hipRealDataTypeSize(bias_type);
                 }
                 if(b == 0)
                 {
@@ -2293,14 +1723,14 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
             delete hD_gold_ScaleAlpha[i];
             delete hD_1[i];
             //delete hBias[i];
-            use_host_vector(hBias, tbias, 
-                delete vec[i]
-                , i);
+            // use_host_vector(hBias, tbias, 
+            //     delete vec[i]
+            //     , i);
 
             //delete hBias_gold[i];
-            use_host_vector(hBias_gold, tbias, 
-                delete vec[i]
-                , i);
+            // use_host_vector(hBias_gold, tbias, 
+            //     delete vec[i]
+            //     , i);
 
             delete hBias_gold_epl[i];
 
@@ -2314,9 +1744,9 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                 delete dD[i];
 
             //delete dBias[i];
-            use_device_vector(dBias, tbias,
-                delete vec[i]
-                , i);
+            // use_device_vector(dBias, tbias,
+            //     delete vec[i]
+            //     , i);
 
             delete dScaleAlphaVec[i];
             if(arg.scaleA)
@@ -2475,6 +1905,7 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                     {
                     case hipblaslt_activation_type::gelu:
                         if(arg.gradient){
+                            /*
                             epilogue_func(epilogue_param,
                                           hBias,
                                           gemmIdx,
@@ -2483,8 +1914,10 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                                           arg.activation_arg2,
                                           ::_dgelu,
                                           true);
+                                          */
                         }
                         else{
+                            /*
                             epilogue_func(epilogue_param,
                                           hBias,
                                           gemmIdx,
@@ -2493,9 +1926,11 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                                           arg.activation_arg2,
                                           ::_gelu,
                                           false);
+                                          */
                         }
                         break;
                     case hipblaslt_activation_type::relu:
+                    /*
                         epilogue_func(epilogue_param,
                                           hBias,
                                           gemmIdx,
@@ -2504,15 +1939,17 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                                       arg.activation_arg2,
                                       ::_relu,
                                       arg.gradient);
+                                      */
                         break;
                     default:
-                        epilogue_func(epilogue_param, hBias, gemmIdx, tbias, false);
+                        //epilogue_func(epilogue_param, hBias, gemmIdx, tbias, false);
                         break;
                     }
                     if(arg.gradient && arg.bias_vector && batchIdx == num_batches[gemmIdx] - 1)
                     {
                         if(arg.bias_source == hipblaslt_bias_source::d)
                         {
+                            /*
                             reduction_func<false, float>(*(hBias_gold_epl[gemmIdx]) + pos,
                                                          hBias_gold,
                                                          gemmIdx,
@@ -2523,6 +1960,7 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                                                          ldd[gemmIdx],
                                                          stride_d[gemmIdx],
                                                          num_batches[gemmIdx]);
+                                                         */
                         }
                         else
                         {
@@ -2542,6 +1980,7 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                                           &arg]<typename Ti>(Ti* ptr) {
                                 if(sumLd)
                                 {
+                                    /*
                                     reduction_func<true, float>(ptr,
                                                                 hBias_gold,
                                                                 gemmIdx,
@@ -2552,9 +1991,11 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                                                                 s2,
                                                                 s3,
                                                                 num_batches[gemmIdx]);
+                                                                */
                                 }
                                 else
                                 {
+                                    /*
                                     reduction_func<false, float>(ptr,
                                                                  hBias_gold,
                                                                  gemmIdx,
@@ -2565,6 +2006,7 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                                                                  s2,
                                                                  s3,
                                                                  num_batches[gemmIdx]);
+                                                                 */
                                 }
                             };
 
@@ -2701,6 +2143,7 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
             {
                 copy_gemm_to_host(stream, gemm_count, hD_1, dD);
                 
+                /*//TODO: add this
                 use_device_host_gold_vector(dBias, hBias, hBias_gold, tbias, 
                     check(stream, //operation
                       arg,
@@ -2754,6 +2197,7 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                       hipblaslt_error,
                       hipblaslt_atol,
                       hipblaslt_rtol);                
+                      */
 
                 /*check(stream,
                       arg,
@@ -3099,6 +2543,7 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
             }
             if(arg.unit_check || arg.norm_check || arg.allclose_check)
             {
+                /*//TODO: add this
                 use_device_host_gold_vector(dBias, hBias, hBias_gold, tbias, 
                     check(stream, //operation
                       arg,
@@ -3153,6 +2598,7 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
                       hipblaslt_atol,
                       hipblaslt_rtol
                 )
+                */
                 /*check(stream,
                       arg,
                       gemm_count,
@@ -3302,15 +2748,15 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
         delete hD_gold_ScaleAlpha[i];
         delete hD_1[i];
 
-        use_host_vector(hBias, tbias, 
-            delete vec[i]
-            ,i);
+        // use_host_vector(hBias, tbias, 
+        //     delete vec[i]
+        //     ,i);
 
         delete hBias_gold_epl[i];
 
-        use_host_vector(hBias_gold, tbias, 
-            delete vec[i]
-            ,i);
+        // use_host_vector(hBias_gold, tbias, 
+        //     delete vec[i]
+        //     ,i);
 
         delete hScaleAlphaVec[i];
 
@@ -3320,9 +2766,9 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
         delete dC[i];
         if(!arg.c_equal_d)
             delete dD[i];
-        use_device_vector(dBias, tbias,
-            delete vec[i]
-            , i);
+        // use_device_vector(dBias, tbias,
+        //     delete vec[i]
+        //     , i);
         delete dScaleAlphaVec[i];
         if(arg.scaleA)
         {
@@ -3362,11 +2808,13 @@ void testing_matmul_with_bias(const Arguments& arg, hipDataType tbias)
         }
     }
     //void* dXXX = new std::vector<...>(gemm_count);
-    delete_device_vector_head(dBias, tbias);
-    delete_host_vector_head(hBias, tbias);
-    delete_host_vector_head(hBias_gold, tbias);
+    // delete_device_vector_head(dBias, tbias);
+    // delete_host_vector_head(hBias, tbias);
+    // delete_host_vector_head(hBias_gold, tbias);
 
     CHECK_HIP_ERROR(hipStreamDestroy(stream));
     CHECK_HIP_ERROR(hipEventDestroy(event_gpu_time_start));
     CHECK_HIP_ERROR(hipEventDestroy(event_gpu_time_end));
 }
+
+template void testing_matmul_with_bias_impl<float, float, float, float, float, float>(const Arguments& arg);

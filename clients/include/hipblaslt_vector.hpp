@@ -98,6 +98,32 @@ inline void hipblaslt_init_nan(host_vector<T>& that, bool seedReset = false)
     hipblaslt_init_template(that, random_nan_generator<T>, seedReset);
 }
 
+inline void hipblaslt_init(hipDataType dtype, void *dst, std::size_t numBytes, bool seedReset = false)
+{
+    if(seedReset)
+    {
+        hipblaslt_seedrand();
+    }
+
+    if (dtype == HIP_R_32F) {
+        hipblaslt_init(reinterpret_cast<float *>(dst), numBytes / sizeof(float), 1, 1);
+    } else if (dtype == HIP_R_64F) {
+        hipblaslt_init(reinterpret_cast<double *>(dst), numBytes / sizeof(double), 1, 1);
+    } else if (dtype == HIP_R_16F) {
+        hipblaslt_init(reinterpret_cast<hipblasLtHalf *>(dst), numBytes / sizeof(hipblasLtHalf), 1, 1);
+    } else if (dtype == HIP_R_16BF) {
+        hipblaslt_init(reinterpret_cast<hipblasLtBfloat16 *>(dst), numBytes / sizeof(hipblasLtBfloat16), 1, 1);
+    } else if (dtype == HIP_R_32I) {
+        hipblaslt_init(reinterpret_cast<hipblasLtInt32 *>(dst), numBytes / sizeof(hipblasLtInt32), 1, 1);
+    } else if (dtype == HIP_R_8I) {
+        hipblaslt_init(reinterpret_cast<hipblasLtInt8 *>(dst), numBytes / sizeof(hipblasLtInt8), 1, 1);
+    } else if (dtype == HIP_R_8F_E4M3_FNUZ) {
+        hipblaslt_init(reinterpret_cast<hipblaslt_f8_fnuz *>(dst), numBytes, 1, 1);
+    } else if (dtype == HIP_R_8F_E5M2_FNUZ) {
+        hipblaslt_init(reinterpret_cast<hipblaslt_bf8_fnuz *>(dst), numBytes, 1, 1);
+    }
+}
+
 //!
 //! @brief Initialize a host_vector.
 //! @param that The host_vector.
