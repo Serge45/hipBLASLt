@@ -380,6 +380,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
     self.do["ApplyAlpha"]  = True
     self.do["GlobalWrite"] = True
     self.do["EdgeWrite"]   = True
+    self.do["OptimizeCVTLocalWrite"] = True
     self.do["KeepDirectToLdsAlloc"] = False  # If true, keep regs used for LDS alloc even if not used
 
     self.do["executeToInitEnd"] = 0
@@ -753,6 +754,50 @@ class KernelWriter(metaclass=abc.ABCMeta):
       packAIdx = 0
       packBIdx = 0
       packMIdx = 0
+
+      if self.do["OptimizeCVTLocalWrite"] is True:
+        cvtIndices = [idx for idx, j in enumerate(writeItems) for i in j.items() if isinstance(i, Module) and i.findNamedItem("CvtLocalWrite")]
+
+        def nonEmptyLocalWriteMod(idx):
+          item = writeItems[idx]
+
+          if isinstance(item, Module):
+            return len(item.flatitems()) > 0
+          return isinstance(item, Instruction)
+
+        def splitCvtModuleItems(item):
+          for i in filter(lambda x: isinstance(x, Module), item.items()):
+                mod = i.findNamedItem("CvtLocalWrite")
+
+                if mod:
+                  items = item.flatitems()
+                  #TODO: need more considerations
+                  return [j for j in items if not isinstance(j, LocalWriteInstruction)], [j for j in items if isinstance(j, LocalWriteInstruction)]
+
+        if len(cvtIndices) > 0:
+          ranges = zip([0] + cvtIndices, cvtIndices) if cvtIndices[0] != 0 else zip(cvtIndices, cvtIndices[1:])
+
+          for beg, end in ranges:
+            leftBound = next(filter(nonEmptyLocalWriteMod, reversed(range(beg, end))), beg) + 1
+            rightBound = end
+            totalSpaceToSchedule = rightBound - leftBound
+            cvtInsts, localWrites = splitCvtModuleItems(writeItems[end])
+            writeItems[rightBound] = Module()
+
+            for lw in localWrites:
+              writeItems[rightBound].add(lw)
+
+            numCvtInstsSpacePerIter = totalSpaceToSchedule // len(cvtInsts)
+
+            if numCvtInstsSpacePerIter == 0:
+              continue
+
+            counter = 0
+
+            while len(cvtInsts):
+              if counter % numCvtInstsSpacePerIter == 0:
+                writeItems[leftBound + counter] = cvtInsts.pop(0)
+              counter += 1
 
       #####
       # Prepare localReadCode

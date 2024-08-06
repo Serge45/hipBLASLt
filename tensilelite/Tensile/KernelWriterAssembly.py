@@ -6774,7 +6774,7 @@ class KernelWriterAssembly(KernelWriter):
             localWriteCode = imod.add(Module("LocalWrite%u perp=%d para=%d"%(instructionCnt,perp,para)))
 
           for s in range(0, max(tP["nwcv"],tP["nwpv"])//tP["nwcvpi"]):
-            localWriteCVTCode = Module()
+            localWriteCVTCode = Module("CvtLocalWrite")
             sPerp = 0
             sPara = 0
             needToSplitMetadata = False
