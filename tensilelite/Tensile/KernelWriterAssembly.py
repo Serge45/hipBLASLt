@@ -7834,7 +7834,7 @@ class KernelWriterAssembly(KernelWriter):
     module.addSpaceLine()
 
     module.add(SMovB32(dst=sgpr("SrdTD+3"), src="Srd127_96", comment="Set bits 127_96 in post-loop SRD"))
-    module.add(SMovB32(dst=sgpr("SrdTD+2"), src=hex(0x80000000)))
+    module.add(SMovB32(dst=sgpr("SrdTD+2"), src=hex(0xffffffff)))
 
     module.add(SMulI32(dst=sgpr(tmpspgr0), src0="MT1", src1=sgpr("WorkGroup1"), comment=""))
     module.add(SMulHIU32(dst=sgpr(tmpspgr+1), src0=sgpr(tmpspgr0), src1=sgpr("StrideC1J"), comment=""))
@@ -8037,7 +8037,7 @@ class KernelWriterAssembly(KernelWriter):
     # Buffer-load uses one base read pointer stored in the SRD - set it here:
     module.add(SMovB32(dst=sgpr("Srd%s+0"%ch), src=sgpr("Address%s+0"%ch), comment="init SRD base address (lower)" ))
     module.add(SMovB32(dst=sgpr("Srd%s+1"%ch), src=sgpr("Address%s+1"%ch), comment="init SRD base address (upper) + other fields" ))
-    module.add(SMovB32(dst=sgpr("Srd%s+2"%ch), src=hex(0x80000000)))
+    module.add(SMovB32(dst=sgpr("Srd%s+2"%ch), src=hex(0xffffffff)))
     module.add(SMovB32(dst=sgpr("Srd%s+3"%ch), src="Srd127_96", comment="Set bits 127_96 in post-loop SRD"))
     module.addSpaceLine()
     return module
