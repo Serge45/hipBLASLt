@@ -492,7 +492,7 @@ class ProblemPredicate(Properties.Predicate):
         # for bufferstore offset, test if the bot-right offset < 2^32,
         # it should be StrideA*MT1, so we need to output MT1 and use the StrideA of problem in host-side for predication
         if 'BufferStore' in state and state['BufferStore'] == True:
-            rv += [cls('BufferStoreOffsetLimitCheck', value=state['MacroTile1'])]
+            rv += [cls('BufferStoreOffsetLimitCheck', value=state['MIWaveGroup'][1] * state['MatrixInstBN'] * state['MatrixInstN'])]
 
         if '_GlobalAccumulation' in state and state['_GlobalAccumulation'] != None and not state["StreamK"]:
             value = globalParameters['MinKForGSU']
