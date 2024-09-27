@@ -1484,7 +1484,7 @@ def generateLogic(config, benchmarkDataPath, libraryLogicPath):
         analysisParameters["ArchitectureName"], analysisParameters["DeviceNames"], analysisParameters["LibraryType"], logicTuple)
 
     if globalParameters["LogicFormat"] == "yaml":
-      LibraryIO.writeYAML(filename + ".yaml", data, explicit_start=False, explicit_end=False)
+      LibraryIO.writeYAML(filename + ".yaml", data, explicit_start=False, explicit_end=False, verbose=True)
     elif globalParameters["LogicFormat"] == "json":
       LibraryIO.write(filename, data, "json")
     else:

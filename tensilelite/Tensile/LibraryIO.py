@@ -66,6 +66,9 @@ try:
 except ImportError:
     print("Message pack python library not detected. Must use YAML backend instead.")
 
+class VerboseYAMLDumper(yaml.SafeDumper):
+    def ignore_aliases(self, data):
+        return True
 
 ###################
 # Writing functions
@@ -82,7 +85,7 @@ def write(filename_noExt, data, format="yaml"):
         printExit("Unrecognized write format {}".format(format))
 
 
-def writeYAML(filename, data, **kwargs):
+def writeYAML(filename, data, verbose=False, **kwargs):
     """Writes data to file in YAML format."""
     # set default kwags for yaml dump
     if "explicit_start" not in kwargs:
@@ -93,7 +96,8 @@ def writeYAML(filename, data, **kwargs):
         kwargs["default_flow_style"] = None
 
     with open(filename, "w") as f:
-        yaml.dump(data, f, **kwargs)
+        Dumper = VerboseYAMLDumper if verbose else yaml.SafeDumper
+        yaml.dump(data, f, Dumper=Dumper, **kwargs)
 
 def writeJson(filename, data):
     """Writes data to file in json format."""
