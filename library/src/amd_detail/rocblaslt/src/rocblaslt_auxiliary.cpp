@@ -1350,58 +1350,101 @@ rocblaslt_status
         }
         auto prob = construct_rocblaslt_problem(
             handle, matmul_desc, matA, matB, matC, matD, &alpha, &beta, pref->max_workspace_bytes);
-        status = getBestSolutions(prob,
-                                  handle,
-                                  tensile_data,
-                                  requestedAlgoCount,
-                                  heuristicResultsArray,
-                                  returnAlgoCount,
-                                  pref->max_workspace_bytes);
-        if(dummy_bias_address)
-            matmul_desc->bias = nullptr;
-        log_api(__func__, "returnAlogCount", *returnAlgoCount);
 
-        //Try to get size independent solutions from getAllSolutions()
-        if(requestedAlgoCount > *returnAlgoCount)
+
+        const char* overrideEnv = getenv("HIPBALSLT_TENSILE_GEMM_OVERRODE_PATH");
+        bool overrideAlgo = false;
+
+        if (1)
         {
-            std::vector<rocblaslt_matmul_heuristic_result> allSolutionsResults;
-            if(rocblaslt_status_success
-               == getAllSolutions(prob, handle, allSolutionsResults, pref->max_workspace_bytes))
+
+            std::vector<rocblaslt_matmul_heuristic_result> overrideResults;
+            std::vector<int> solutionIndex;
+            solutionIndex.resize(1);
+            solutionIndex[0] = 11106;
+            size_t maxWorkspaceSize = std::numeric_limits<size_t>::max();
+            if (rocblaslt_status_success
+            == getSolutionsFromIndex(handle, solutionIndex, overrideResults, pref->max_workspace_bytes))
             {
-                int oriReturnAlgoCount = *returnAlgoCount;
-                for(int i = 0;
-                    *returnAlgoCount < requestedAlgoCount && i < allSolutionsResults.size();
-                    i++)
+
+                size_t required_workspace_size = 0;
+                if (rocblaslt_status_success
+                == isSolutionSupported(handle, prob, tensile_data, &overrideResults[0].algo, &required_workspace_size))
                 {
-                    bool   duplicated_sol          = false;
-                    size_t required_workspace_size = 0;
-                    for(int j = 0; j < oriReturnAlgoCount; j++)
-                        if(*(int*)(heuristicResultsArray[j].algo.data)
-                           == *(int*)(allSolutionsResults[i].algo.data)) //solution index
-                            duplicated_sol = true;
-
-                    if(duplicated_sol == true
-                       || rocblaslt_status_success
-                              != isSolutionSupported(handle,
-                                                     prob,
-                                                     tensile_data,
-                                                     &allSolutionsResults[i].algo,
-                                                     &required_workspace_size))
-                        continue;
-                    //append sol to heuristpicResultsArray
-                    memcpy(heuristicResultsArray[*returnAlgoCount].algo.data,
-                           allSolutionsResults[i].algo.data,
-                           sizeof(heuristicResultsArray[i].algo.data));
-                    heuristicResultsArray[*returnAlgoCount].algo.max_workspace_bytes
-                        = pref->max_workspace_bytes;
-                    heuristicResultsArray[*returnAlgoCount].algo.fallback = false;
-                    heuristicResultsArray[*returnAlgoCount].state = rocblaslt_status_success;
-                    heuristicResultsArray[*returnAlgoCount].workspaceSize = required_workspace_size;
-                    (*returnAlgoCount)++;
+                    overrideAlgo = true;
+                    memcpy(heuristicResultsArray[0].algo.data,
+                           overrideResults[0].algo.data,
+                           sizeof(heuristicResultsArray[0].algo.data));
+                    heuristicResultsArray[0].algo.max_workspace_bytes = pref->max_workspace_bytes;
+                    heuristicResultsArray[0].algo.fallback = false;
+                    heuristicResultsArray[0].state = rocblaslt_status_success;
+                    heuristicResultsArray[0].workspaceSize = required_workspace_size;
+                    requestedAlgoCount--;
+                    heuristicResultsArray++;
                 }
-
-                log_api(__func__, "final returnAlogCount", *returnAlgoCount);
             }
+        }
+
+        if (!(overrideAlgo && requestedAlgoCount == 0))
+        {
+            status = getBestSolutions(prob,
+                                    handle,
+                                    tensile_data,
+                                    requestedAlgoCount,
+                                    heuristicResultsArray,
+                                    returnAlgoCount,
+                                    pref->max_workspace_bytes);
+            if(dummy_bias_address)
+                matmul_desc->bias = nullptr;
+            log_api(__func__, "returnAlogCount", *returnAlgoCount);
+
+            //Try to get size independent solutions from getAllSolutions()
+            if(requestedAlgoCount > *returnAlgoCount)
+            {
+                std::vector<rocblaslt_matmul_heuristic_result> allSolutionsResults;
+                if(rocblaslt_status_success
+                == getAllSolutions(prob, handle, allSolutionsResults, pref->max_workspace_bytes))
+                {
+                    int oriReturnAlgoCount = *returnAlgoCount;
+                    for(int i = 0;
+                        *returnAlgoCount < requestedAlgoCount && i < allSolutionsResults.size();
+                        i++)
+                    {
+                        bool   duplicated_sol          = false;
+                        size_t required_workspace_size = 0;
+                        for(int j = 0; j < oriReturnAlgoCount; j++)
+                            if(*(int*)(heuristicResultsArray[j].algo.data)
+                            == *(int*)(allSolutionsResults[i].algo.data)) //solution index
+                                duplicated_sol = true;
+
+                        if(duplicated_sol == true
+                        || rocblaslt_status_success
+                                != isSolutionSupported(handle,
+                                                        prob,
+                                                        tensile_data,
+                                                        &allSolutionsResults[i].algo,
+                                                        &required_workspace_size))
+                            continue;
+                        //append sol to heuristpicResultsArray
+                        memcpy(heuristicResultsArray[*returnAlgoCount].algo.data,
+                            allSolutionsResults[i].algo.data,
+                            sizeof(heuristicResultsArray[i].algo.data));
+                        heuristicResultsArray[*returnAlgoCount].algo.max_workspace_bytes
+                            = pref->max_workspace_bytes;
+                        heuristicResultsArray[*returnAlgoCount].algo.fallback = false;
+                        heuristicResultsArray[*returnAlgoCount].state = rocblaslt_status_success;
+                        heuristicResultsArray[*returnAlgoCount].workspaceSize = required_workspace_size;
+                        (*returnAlgoCount)++;
+                    }
+
+                    log_api(__func__, "final returnAlogCount", *returnAlgoCount);
+                }
+            }
+        }
+
+        if (overrideAlgo){
+            (*returnAlgoCount)++;
+            heuristicResultsArray--;
         }
 
         if(status != rocblaslt_status_success)
