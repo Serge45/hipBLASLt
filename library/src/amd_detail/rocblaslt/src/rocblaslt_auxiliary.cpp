@@ -1353,7 +1353,7 @@ rocblaslt_status
         auto prob = construct_rocblaslt_problem(
             handle, matmul_desc, matA, matB, matC, matD, &alpha, &beta, pref->max_workspace_bytes);
 
-        //To do: datatype 找不到一樣的, 但會去找其他的解嗎?
+        //To do
 
         const char* overrideEnv = getenv("HIPBALSLT_TENSILE_GEMM_OVERRIDE_PATH");
         bool overrideAlgo = false;

@@ -108,7 +108,7 @@ namespace Tensile
         try
         {
             
-            // To do: 看有哪些參數需要, client requirement
+            // To do:
             b = std::stol(entries[2]);
             m = std::stol(entries[3]);
             n = std::stol(entries[4]);
