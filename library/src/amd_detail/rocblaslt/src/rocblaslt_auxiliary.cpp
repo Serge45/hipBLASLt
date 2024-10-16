@@ -30,6 +30,7 @@
 #include "rocblaslt_mat_utils.hpp"
 #include "tensile_host.hpp"
 #include "utility.hpp"
+#include "UserDrivenTuningParser.hpp"
 
 #ifndef WIN32
 #include <link.h>
@@ -38,6 +39,7 @@
 #include <hip/hip_runtime_api.h>
 #include <unistd.h>
 #include <utility>
+#include <map>
 
 #define TO_STR2(x) #x
 #define TO_STR(x) TO_STR2(x)
@@ -1351,41 +1353,65 @@ rocblaslt_status
         auto prob = construct_rocblaslt_problem(
             handle, matmul_desc, matA, matB, matC, matD, &alpha, &beta, pref->max_workspace_bytes);
 
+        //To do: datatype 找不到一樣的, 但會去找其他的解嗎?
 
-        const char* overrideEnv = getenv("HIPBALSLT_TENSILE_GEMM_OVERRODE_PATH");
+        const char* overrideEnv = getenv("HIPBALSLT_TENSILE_GEMM_OVERRIDE_PATH");
         bool overrideAlgo = false;
 
-        if (1)
+        if (overrideEnv)
         {
+            std::string overidePath = overrideEnv;
+            Tensile::ProblemOverride po;
+            auto probSols = Tensile::getContractionProblemsFromFile(overidePath);
 
-            std::vector<rocblaslt_matmul_heuristic_result> overrideResults;
-            std::vector<int> solutionIndex;
-            solutionIndex.resize(1);
-            solutionIndex[0] = 11106;
-            size_t maxWorkspaceSize = std::numeric_limits<size_t>::max();
-            if (rocblaslt_status_success
-            == getSolutionsFromIndex(handle, solutionIndex, overrideResults, pref->max_workspace_bytes))
-            {
+            if (probSols.size() == 0){
+                
+                std::cout << "WARNING: no valid entries found in override file: '"
+                          << overidePath << "'.\n";
+            }
+            else {
 
-                size_t required_workspace_size = 0;
-                if (rocblaslt_status_success
-                == isSolutionSupported(handle, prob, tensile_data, &overrideResults[0].algo, &required_workspace_size))
+                std::vector<rocblaslt_matmul_heuristic_result> overrideResults;
+                std::vector<int> solutionIndex(1);
+                Tensile::ProblemOverride prob_key(prob);
+                auto sol_idx = probSols.find(prob_key);
+
+                if (sol_idx != probSols.end())
                 {
-                    overrideAlgo = true;
-                    memcpy(heuristicResultsArray[0].algo.data,
-                           overrideResults[0].algo.data,
-                           sizeof(heuristicResultsArray[0].algo.data));
-                    heuristicResultsArray[0].algo.max_workspace_bytes = pref->max_workspace_bytes;
-                    heuristicResultsArray[0].algo.fallback = false;
-                    heuristicResultsArray[0].state = rocblaslt_status_success;
-                    heuristicResultsArray[0].workspaceSize = required_workspace_size;
-                    requestedAlgoCount--;
-                    heuristicResultsArray++;
+                    solutionIndex[0] = sol_idx->second;
+
+                    size_t maxWorkspaceSize = std::numeric_limits<size_t>::max();
+                    if (rocblaslt_status_success
+                    == getSolutionsFromIndex(handle, solutionIndex, overrideResults, pref->max_workspace_bytes))
+                    {
+
+                        size_t required_workspace_size = 0;
+                        if (rocblaslt_status_success
+                        == isSolutionSupported(handle, prob, tensile_data, &overrideResults[0].algo, &required_workspace_size))
+                        {
+                            overrideAlgo = true;
+                            memcpy(heuristicResultsArray[0].algo.data,
+                                overrideResults[0].algo.data,
+                                sizeof(heuristicResultsArray[0].algo.data));
+                            heuristicResultsArray[0].algo.max_workspace_bytes = pref->max_workspace_bytes;
+                            heuristicResultsArray[0].algo.fallback = false;
+                            heuristicResultsArray[0].state = rocblaslt_status_success;
+                            heuristicResultsArray[0].workspaceSize = required_workspace_size;
+                            requestedAlgoCount--;
+                            heuristicResultsArray++;
+                        }
+                    }
                 }
+                else {
+
+                    std::cout << "WARNING: no found in the map '"
+                              << "'.\n";
+                }
+                
             }
         }
 
-        if (!(overrideAlgo && requestedAlgoCount == 0))
+        if (requestedAlgoCount != 0)
         {
             status = getBestSolutions(prob,
                                     handle,
