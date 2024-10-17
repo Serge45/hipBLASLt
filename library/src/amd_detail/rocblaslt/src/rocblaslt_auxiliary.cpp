@@ -63,6 +63,72 @@ inline void assignAlphaBeta1(const rocblaslt_compute_type& compute_type, void* a
     }
 }
 
+inline bool ProblemOverrideFromFile(rocblaslt_handle                handle,
+                             rocblaslt_matmul_preference            pref,
+                             RocblasltContractionProblem&           problem,
+                             rocblaslt_matmul_desc                  matmul_desc,
+                             int&                                   requestedAlgoCount,
+                             rocblaslt_matmul_heuristic_result      heuristicResultsArray[],
+                             const std::string&                     file_path)
+{
+    
+    bool success = false;
+    auto probSols = Tensile::getContractionProblemsFromFile(file_path);
+
+    if (probSols.size() == 0)
+    {
+        std::cout << "\nrocblaslt warning: no valid entries found in override file: "
+                  << file_path << std::endl;
+    }
+    else {
+
+        std::vector<rocblaslt_matmul_heuristic_result> overrideResults;
+        std::vector<int> solutionIndex(1);
+        Tensile::ProblemOverride prob_key(problem);
+        auto sol_idx = probSols.find(prob_key);
+
+        //TODO: Is it necessary to support the approximation mapped method?
+
+        if (sol_idx != probSols.end())
+        {
+            solutionIndex[0] = sol_idx->second;
+
+            size_t maxWorkspaceSize = std::numeric_limits<size_t>::max();
+            if (rocblaslt_status_success
+            == getSolutionsFromIndex(handle, solutionIndex, overrideResults, pref->max_workspace_bytes))
+            {
+
+                size_t required_workspace_size = 0;
+                auto&  tensile_data = matmul_desc->m_data;
+
+                if (rocblaslt_status_success
+                == isSolutionSupported(handle, problem, tensile_data, &overrideResults[0].algo, &required_workspace_size))
+                {
+                    success = true;
+                    requestedAlgoCount--;
+
+                    memcpy(heuristicResultsArray[requestedAlgoCount].algo.data,
+                           overrideResults[0].algo.data,
+                           sizeof(heuristicResultsArray[requestedAlgoCount].algo.data));
+                           heuristicResultsArray[requestedAlgoCount].algo.max_workspace_bytes = pref->max_workspace_bytes;
+                           heuristicResultsArray[requestedAlgoCount].algo.fallback = false;
+                           heuristicResultsArray[requestedAlgoCount].state = rocblaslt_status_success;
+                           heuristicResultsArray[requestedAlgoCount].workspaceSize = required_workspace_size;
+                }
+            }
+
+            if (!success)
+            {
+                std::cout << "\nrocblaslt warning: failed to find solution with index: "
+                          << solutionIndex[0] << std::endl; 
+            }
+
+        }
+    }
+
+    return success;
+}
+
 /******************************************************************************
  * construct_rocblaslt_problem creates RocblasltContractionProblem from mat    *
  * layout and descriptor for Tensile's findTopSolutions.                      *
@@ -1353,65 +1419,30 @@ rocblaslt_status
         auto prob = construct_rocblaslt_problem(
             handle, matmul_desc, matA, matB, matC, matD, &alpha, &beta, pref->max_workspace_bytes);
 
-        //To do
 
         const char* overrideEnv = getenv("HIPBALSLT_TENSILE_GEMM_OVERRIDE_PATH");
-        bool overrideAlgo = false;
+        bool override_success = false;
 
         if (overrideEnv)
         {
-            std::string overidePath = overrideEnv;
-            Tensile::ProblemOverride po;
-            auto probSols = Tensile::getContractionProblemsFromFile(overidePath);
+            std::string overridePath = overrideEnv;
+            
+            override_success =  ProblemOverrideFromFile(handle,
+                                                        pref,
+                                                        prob,
+                                                        matmul_desc,
+                                                        requestedAlgoCount, 
+                                                        heuristicResultsArray, 
+                                                        overridePath);
 
-            if (probSols.size() == 0){
-                
-                std::cout << "WARNING: no valid entries found in override file: '"
-                          << overidePath << "'.\n";
-            }
-            else {
+            if (!override_success){
 
-                std::vector<rocblaslt_matmul_heuristic_result> overrideResults;
-                std::vector<int> solutionIndex(1);
-                Tensile::ProblemOverride prob_key(prob);
-                auto sol_idx = probSols.find(prob_key);
-
-                if (sol_idx != probSols.end())
-                {
-                    solutionIndex[0] = sol_idx->second;
-
-                    size_t maxWorkspaceSize = std::numeric_limits<size_t>::max();
-                    if (rocblaslt_status_success
-                    == getSolutionsFromIndex(handle, solutionIndex, overrideResults, pref->max_workspace_bytes))
-                    {
-
-                        size_t required_workspace_size = 0;
-                        if (rocblaslt_status_success
-                        == isSolutionSupported(handle, prob, tensile_data, &overrideResults[0].algo, &required_workspace_size))
-                        {
-                            overrideAlgo = true;
-                            memcpy(heuristicResultsArray[0].algo.data,
-                                overrideResults[0].algo.data,
-                                sizeof(heuristicResultsArray[0].algo.data));
-                            heuristicResultsArray[0].algo.max_workspace_bytes = pref->max_workspace_bytes;
-                            heuristicResultsArray[0].algo.fallback = false;
-                            heuristicResultsArray[0].state = rocblaslt_status_success;
-                            heuristicResultsArray[0].workspaceSize = required_workspace_size;
-                            requestedAlgoCount--;
-                            heuristicResultsArray++;
-                        }
-                    }
-                }
-                else {
-
-                    std::cout << "WARNING: no found in the map '"
-                              << "'.\n";
-                }
-                
+                std::cerr << "\nrocblaslt warning: One or more problem overrides failed to load from: "
+                          << overridePath << std::endl;
             }
         }
 
-        if (requestedAlgoCount != 0)
+        if (requestedAlgoCount > 0)
         {
             status = getBestSolutions(prob,
                                     handle,
@@ -1468,9 +1499,8 @@ rocblaslt_status
             }
         }
 
-        if (overrideAlgo){
+        if (override_success){
             (*returnAlgoCount)++;
-            heuristicResultsArray--;
         }
 
         if(status != rocblaslt_status_success)
@@ -1484,6 +1514,7 @@ rocblaslt_status
     }
     return rocblaslt_status_success;
 }
+
 #ifdef __cplusplus
 }
 #endif
@@ -1719,6 +1750,7 @@ rocblaslt_status rocblaslt_copy_matmul(rocblaslt_matmul_desc src, rocblaslt_matm
     dst->copy(*src);
     return rocblaslt_status_success;
 }
+
 
 /*******************************************************************************
  * GPU architecture-related functions

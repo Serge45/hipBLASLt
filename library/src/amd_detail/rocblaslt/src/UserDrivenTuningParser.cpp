@@ -93,7 +93,7 @@ namespace Tensile
             return std::make_pair(ProblemOverride{}, -1);
         }
 
-        //Expected: transA,transB,batch_count,M,N,K,alpha,lda,stride_a,beta,ldb,stride_b,ldc,stride_c,input_type,output_type,compute_type,solution_index
+        //Expected format: transA,transB,batch_count,M,N,K,input_type,output_type,compute_type,solution_index
 
         bool transA = (entries[0] != "N");
         bool transB = (entries[1] != "N");
@@ -108,7 +108,8 @@ namespace Tensile
         try
         {
             
-            // To do:
+            // TODO: are any additional mapping parameters needed?
+
             b = std::stol(entries[2]);
             m = std::stol(entries[3]);
             n = std::stol(entries[4]);
