@@ -51,7 +51,7 @@ namespace Tensile
             std::string   line, entry;
 
             const auto delim         = ',';
-            const int  max_entries   = 10;
+            const int  max_entries   = 34;
 
             while(std::getline(file, line))
             {
@@ -88,7 +88,7 @@ namespace Tensile
     {
         
         const size_t entries_n = entries.size();
-        if(entries_n != 10)
+        if(entries_n != 34)
         {
             return std::make_pair(ProblemOverride{}, -1);
         }
@@ -110,14 +110,14 @@ namespace Tensile
             
             // TODO: are any additional mapping parameters needed?
 
-            b = std::stol(entries[2]);
-            m = std::stol(entries[3]);
-            n = std::stol(entries[4]);
-            k = std::stol(entries[5]);
-            inputType   = hipDataType_to_tensile_type(string_to_hip_datatype(entries[6]));
-            outputType  = hipDataType_to_tensile_type(string_to_hip_datatype(entries[7]));
-            computeType = hipDataType_to_tensile_type(string_to_hip_datatype(entries[8]));
-            solution_idx = std::stoi(entries[9]);
+            b = std::stol(entries[3]);
+            m = std::stol(entries[4]);
+            n = std::stol(entries[5]);
+            k = std::stol(entries[6]);
+            inputType   = hipDataType_to_tensile_type(string_to_hip_datatype(entries[17]));
+            outputType  = hipDataType_to_tensile_type(string_to_hip_datatype(entries[19]));
+            computeType = hipDataType_to_tensile_type(string_to_hip_datatype(entries[21]));
+            solution_idx = std::stoi(entries[33]);
 
         }
         catch(std::invalid_argument const& ex)
