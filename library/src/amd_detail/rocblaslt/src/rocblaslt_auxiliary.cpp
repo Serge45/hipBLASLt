@@ -63,10 +63,29 @@ inline void assignAlphaBeta1(const rocblaslt_compute_type& compute_type, void* a
     }
 }
 
-inline bool ProblemOverrideFromFile(rocblaslt_handle                handle,
-                             rocblaslt_matmul_preference            pref,
+
+inline void heuristicResultcpy(rocblaslt_matmul_heuristic_result*       heuristicResultsDestArray,
+                               rocblaslt_matmul_heuristic_result*       heuristicResultsSrcArray,
+                               size_t&                                  maxWorkSpaceBytes,
+                               size_t&                                  required_workspace_size)
+{
+    memcpy(heuristicResultsDestArray->algo.data,
+           heuristicResultsSrcArray->algo.data,
+           sizeof(heuristicResultsDestArray->algo.data));
+    heuristicResultsDestArray->algo.max_workspace_bytes = maxWorkSpaceBytes;
+    heuristicResultsDestArray->algo.fallback = false;
+    heuristicResultsDestArray->state = rocblaslt_status_success;
+    heuristicResultsDestArray->workspaceSize = required_workspace_size;    
+}
+
+
+
+
+// Preload problem/solution mappings
+bool ProblemOverrideFromFile(rocblaslt_handle&                      handle,
+                             rocblaslt_matmul_preference&           pref,
                              RocblasltContractionProblem&           problem,
-                             rocblaslt_matmul_desc                  matmul_desc,
+                             rocblaslt_matmul_desc&                 matmul_desc,
                              int&                                   requestedAlgoCount,
                              rocblaslt_matmul_heuristic_result      heuristicResultsArray[],
                              const std::string&                     file_path)
@@ -77,7 +96,7 @@ inline bool ProblemOverrideFromFile(rocblaslt_handle                handle,
 
     if (probSols.size() == 0)
     {
-        std::cout << "\nrocblaslt warning: no valid entries found in override file: "
+        std::cerr << "\nrocblaslt warning: no valid entries found in override file: "
                   << file_path << std::endl;
     }
     else {
@@ -104,22 +123,18 @@ inline bool ProblemOverrideFromFile(rocblaslt_handle                handle,
                 if (rocblaslt_status_success
                 == isSolutionSupported(handle, problem, tensile_data, &overrideResults[0].algo, &required_workspace_size))
                 {
-                    success = true;
+                    heuristicResultcpy(&heuristicResultsArray[requestedAlgoCount - 1], 
+                                       &overrideResults[0],
+                                       pref->max_workspace_bytes,
+                                       required_workspace_size);
                     requestedAlgoCount--;
-
-                    memcpy(heuristicResultsArray[requestedAlgoCount].algo.data,
-                           overrideResults[0].algo.data,
-                           sizeof(heuristicResultsArray[requestedAlgoCount].algo.data));
-                           heuristicResultsArray[requestedAlgoCount].algo.max_workspace_bytes = pref->max_workspace_bytes;
-                           heuristicResultsArray[requestedAlgoCount].algo.fallback = false;
-                           heuristicResultsArray[requestedAlgoCount].state = rocblaslt_status_success;
-                           heuristicResultsArray[requestedAlgoCount].workspaceSize = required_workspace_size;
+                    success = true;
                 }
             }
 
             if (!success)
             {
-                std::cout << "\nrocblaslt warning: failed to find solution with index: "
+                std::cerr << "\nrocblaslt warning: failed to find solution with index: "
                           << solutionIndex[0] << std::endl; 
             }
 
@@ -1483,24 +1498,21 @@ rocblaslt_status
                                                         &required_workspace_size))
                             continue;
                         //append sol to heuristpicResultsArray
-                        memcpy(heuristicResultsArray[*returnAlgoCount].algo.data,
-                            allSolutionsResults[i].algo.data,
-                            sizeof(heuristicResultsArray[i].algo.data));
-                        heuristicResultsArray[*returnAlgoCount].algo.max_workspace_bytes
-                            = pref->max_workspace_bytes;
-                        heuristicResultsArray[*returnAlgoCount].algo.fallback = false;
-                        heuristicResultsArray[*returnAlgoCount].state = rocblaslt_status_success;
-                        heuristicResultsArray[*returnAlgoCount].workspaceSize = required_workspace_size;
+                        heuristicResultcpy(&heuristicResultsArray[*returnAlgoCount], 
+                                           &allSolutionsResults[i],
+                                           pref->max_workspace_bytes,
+                                           required_workspace_size);
                         (*returnAlgoCount)++;
                     }
 
-                    log_api(__func__, "final returnAlogCount", *returnAlgoCount);
+                    log_api(__func__, "returnAlogCount", *returnAlgoCount);
                 }
             }
         }
 
         if (override_success){
             (*returnAlgoCount)++;
+            log_api(__func__, "final returnAlogCount", *returnAlgoCount);
         }
 
         if(status != rocblaslt_status_success)
