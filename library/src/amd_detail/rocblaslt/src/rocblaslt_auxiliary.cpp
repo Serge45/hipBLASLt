@@ -113,17 +113,20 @@ bool problem_override_from_file(rocblaslt_handle&                      handle,
         std::cerr << "\nrocblaslt warning: no valid entries found in override file: "
                   << file_path << std::endl;
     }
-    else {
+    else 
+    {
 
         std::vector<rocblaslt_matmul_heuristic_result> overrideResults;
         std::vector<int> solutionIndex(1);
         Tensile::ProblemOverride prob_key(problem);
-        auto sol_idx = probSols.find(prob_key);
+        auto sol_iter = probSols.equal_range(prob_key);
 
         //TODO: Is it necessary to support the approximation mapped method?
 
-        if (sol_idx != probSols.end())
+        for (auto sol_idx = sol_iter.first; sol_idx != sol_iter.second; sol_idx++)
         {
+
+
             solutionIndex[0] = sol_idx->second;
 
             if (rocblaslt_status_success
@@ -145,18 +148,18 @@ bool problem_override_from_file(rocblaslt_handle&                      handle,
                                                 pref->max_workspace_bytes,
                                                 required_workspace_size);
                     }
-                    
+
                     success = true;
                 }
             }
-
-            if (!success)
-            {
-                std::cerr << "\nrocblaslt warning: failed to find solution with index: "
-                            << solutionIndex[0] << std::endl; 
-            }
-
         }
+
+        if (!success)
+        {
+            std::cerr << "\nrocblaslt warning: failed to find solution with index: "
+                        << solutionIndex[0] << std::endl; 
+        }
+
     }
 
     return success;
