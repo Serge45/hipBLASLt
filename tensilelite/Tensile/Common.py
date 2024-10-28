@@ -525,7 +525,16 @@ validParameters = {
     "PrefetchGlobalRead":         [ 0, 1, 2 ],
 
     # number of iteration prefetch local reads from lds to VGPRs buffer = PLR
-    "PrefetchLocalRead":          list(range(128+1)),
+    # By setting PLR to -1, generator will try to find a suitable PLR according to
+    # ClusterLocalRead and LocalReadVectorWidth settings. If not applicable, it will
+    # set PLR to 1. Here's the psuedo-code for -1 case:
+    # plr = 1
+    # if use matrix instruction and lrvw > 4 and clr:
+    #   plr = (DU//MiK)//(lrvw//4)
+
+    # E.g. if MI==[16,16,16,1], DU==32, lrvw==8, then the auto-determined PLR:
+    # plr = (32//16)//(8//4) == 1
+    "PrefetchLocalRead":          list(range(-1, 128+1)),
 
     # MatrixInstruction Only
     # If set ClusterLocalRead, each iteration dedicated vgprBuffer for localRead

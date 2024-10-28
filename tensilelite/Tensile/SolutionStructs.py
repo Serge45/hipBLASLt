@@ -3066,6 +3066,18 @@ class Solution(collections.abc.Mapping):
 
     assert(state["DepthU"]> 0)
 
+    # it requires determined DepthU
+    def calcAutoPLR(lrvw: int, du: int, miK: int, mivw: int) -> int:
+      if lrvw > mivw:
+        return max((du//miK)//(lrvw//mivw), 1)
+      return 1
+
+    if state["PrefetchLocalRead"] == -1:
+      if state["EnableMatrixInstruction"] and state["ClusterLocalRead"]:
+        state["PrefetchLocalRead"] = calcAutoPLR(state["LocalReadVectorWidth"], state["DepthU"], state["MatrixInstK"], state["MIInputPerThread"])
+      else:
+        state["PrefetchLocalRead"] = 1
+
     if state["ProblemType"]["Sparse"] and not state["DirectToVgprSparseMetadata"]:
       state["NumLoadsCoalescedMetadata"] = 1
 
